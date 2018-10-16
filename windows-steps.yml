@@ -23,13 +23,11 @@ steps:
 - script: |
     python -m wget https://download.microsoft.com/download/2/E/C/2EC96D7F-687B-4613-80F6-E10F670A2D97/msmpisdk.msi
     python -m wget https://download.microsoft.com/download/2/E/C/2EC96D7F-687B-4613-80F6-E10F670A2D97/msmpisetup.exe
-    MSMpiSetup.exe -unattend -force
+    msmpisetup.exe -unattend -force
+    msiexec /i msmpisdk.msi /q
   displayName: Install MSMPI
 
 - bash: |
-    python -m wget http://ftp.mcs.anl.gov/pub/petsc/release-snapshots/petsc-lite-3.10.2.tar.gz
-    tar xf petsc-lite-3.10.2.tar.gz
-    cd petsc-3.10.2 && \
     ./configure \
     --COPTFLAGS="-O2 -g" \
     --CXXOPTFLAGS="-O2 -g" \
@@ -50,14 +48,3 @@ steps:
     make && \
     sudo make install
   displayName: Install PETSc
-
-
-- task: CMake@1
-  displayName: CMake
-  inputs:
-    workingDirectory: cpp/build
-    cmakeArgs: '-DCMAKE_INSTALL_PREFIX=$HOME/FEniCS ..'
-
-- script: make -j4
-  displayName: Build
-  workingDirectory: cpp/build
