@@ -1,0 +1,63 @@
+
+steps:
+- checkout: self
+  clean: true
+  fetchDepth: 5
+  submodules: true
+
+-task: UsePythonVersion@0
+  displayName: Use Python Version 2.7
+  inputs:
+    versionSpec: '2.7'
+    addToPath: true
+
+- task: CondaEnvironment@0
+  displayName: Install dependencies
+  inputs:
+    createCustomEnvironment: True
+    environmentName: petsc
+    packageSpecs: 'python=2.7.* python-wget'
+    createOptions: '-c conda-forge'
+    updateConda: false
+
+- cmd: |
+    python -m wget https://download.microsoft.com/download/2/E/C/2EC96D7F-687B-4613-80F6-E10F670A2D97/msmpisdk.msi
+    python -m wget https://download.microsoft.com/download/2/E/C/2EC96D7F-687B-4613-80F6-E10F670A2D97/msmpisetup.exe
+    MSMpiSetup.exe -unattend -force
+  displayName: Install MSMPI
+
+- bash: |
+    python -m wget http://ftp.mcs.anl.gov/pub/petsc/release-snapshots/petsc-lite-3.10.2.tar.gz
+    tar xf petsc-lite-3.10.2.tar.gz
+    cd petsc-3.10.2 && \
+    ./configure \
+    --COPTFLAGS="-O2 -g" \
+    --CXXOPTFLAGS="-O2 -g" \
+    --FOPTFLAGS="-O2 -g" \
+    --with-debugging=yes \
+    --with-fortran-bindings=no \
+    --download-blacs \
+    --download-hypre \
+    --download-metis \
+    --download-mumps \
+    --download-ptscotch \
+    --download-scalapack \
+    --download-spai \
+    --download-suitesparse \
+    --download-superlu \
+    --with-scalar-type=real \
+    --prefix=/usr/local && \
+    make && \
+    sudo make install
+  displayName: Install PETSc
+
+
+- task: CMake@1
+  displayName: CMake
+  inputs:
+    workingDirectory: cpp/build
+    cmakeArgs: '-DCMAKE_INSTALL_PREFIX=$HOME/FEniCS ..'
+
+- script: make -j4
+  displayName: Build
+  workingDirectory: cpp/build

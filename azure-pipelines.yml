@@ -1,0 +1,19 @@
+jobs:
+
+# - job: MacOS
+#   displayName: MacOS CI Test
+
+#   pool:
+#     vmImage: xcode9-macos10.13
+
+#   steps:
+#   - template: ./macos-steps.yml
+
+- job: Windows
+  displayName: Windows CI Test
+
+  pool:
+    vmImage: vs2017-win2016
+
+  steps:
+  - template: ./windows-steps.yml
