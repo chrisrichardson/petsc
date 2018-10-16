@@ -1,0 +1,31 @@
+
+steps:
+- checkout: self
+  clean: true
+  fetchDepth: 5
+  submodules: true
+
+- bash: |
+    brew update
+    brew install cmake open-mpi bison flex
+    ./configure \
+    --COPTFLAGS="-O2 -g" \
+    --CXXOPTFLAGS="-O2 -g" \
+    --FOPTFLAGS="-O2 -g" \
+    --with-debugging=yes \
+    --with-fortran-bindings=no \
+    --download-blacs \
+    --download-hypre \
+    --download-metis \
+    --download-mumps \
+    --download-ptscotch \
+    --download-scalapack \
+    --download-spai \
+    --download-suitesparse \
+    --download-superlu \
+    --with-scalar-type=real \
+    --prefix=/usr/local/petsc && \
+    make && \
+    sudo make install
+    tar czf petsc-install-mac.tar.gz /usr/local/petsc
+  displayName: Install PETSc
