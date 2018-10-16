@@ -20,7 +20,7 @@ steps:
     createOptions: '-c conda-forge'
     updateConda: false
 
-- cmd: |
+- script: |
     python -m wget https://download.microsoft.com/download/2/E/C/2EC96D7F-687B-4613-80F6-E10F670A2D97/msmpisdk.msi
     python -m wget https://download.microsoft.com/download/2/E/C/2EC96D7F-687B-4613-80F6-E10F670A2D97/msmpisetup.exe
     MSMpiSetup.exe -unattend -force
