@@ -7,7 +7,7 @@ steps:
 
 - bash: |
     brew update
-    brew install cmake open-mpi bison flex
+    brew install open-mpi bison flex
   displayName: Install Homebrew dependencies
 
 - bash: |
