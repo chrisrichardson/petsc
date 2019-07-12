@@ -1,114 +1,150 @@
 
 #include <petsc/private/tsimpl.h>        /*I "petscts.h"  I*/
 
-static PetscErrorCode OutputBIN(MPI_Comm comm,const char *filename,PetscViewer *viewer)
-{
-  PetscErrorCode ierr;
-
-  PetscFunctionBegin;
-  ierr = PetscViewerCreate(comm,viewer);CHKERRQ(ierr);
-  ierr = PetscViewerSetType(*viewer,PETSCVIEWERBINARY);CHKERRQ(ierr);
-  ierr = PetscViewerFileSetMode(*viewer,FILE_MODE_WRITE);CHKERRQ(ierr);
-  ierr = PetscViewerFileSetName(*viewer,filename);CHKERRQ(ierr);
-  PetscFunctionReturn(0);
-}
+typedef struct {
+  PetscViewer viewer;
+} TSTrajectory_Basic;
 
 static PetscErrorCode TSTrajectorySet_Basic(TSTrajectory tj,TS ts,PetscInt stepnum,PetscReal time,Vec X)
 {
-  PetscViewer    viewer;
-  PetscInt       ns,i;
-  Vec            *Y;
-  char           filename[PETSC_MAX_PATH_LEN];
-  PetscReal      tprev;
-  PetscErrorCode ierr;
-  MPI_Comm       comm;
+  TSTrajectory_Basic *tjbasic = (TSTrajectory_Basic*)tj->data;
+  char               filename[PETSC_MAX_PATH_LEN];
+  PetscInt           ns,i;
+  PetscErrorCode     ierr;
 
   PetscFunctionBegin;
-  ierr = PetscObjectGetComm((PetscObject)ts,&comm);CHKERRQ(ierr);
-  ierr = TSGetStepNumber(ts,&stepnum);CHKERRQ(ierr);
-  if (stepnum == 0) {
-    PetscMPIInt rank;
-    ierr = MPI_Comm_rank(comm,&rank);CHKERRQ(ierr);
-    if (!rank) {
-      ierr = PetscRMTree(tj->dirname);CHKERRQ(ierr);
-      ierr = PetscMkdir(tj->dirname);CHKERRQ(ierr);
-    }
-    ierr = PetscSNPrintf(filename,sizeof(filename),tj->dirfiletemplate,stepnum);CHKERRQ(ierr);
-    ierr = OutputBIN(comm,filename,&viewer);CHKERRQ(ierr);
-    ierr = VecView(X,viewer);CHKERRQ(ierr);
-    ierr = PetscViewerBinaryWrite(viewer,&time,1,PETSC_REAL,PETSC_FALSE);CHKERRQ(ierr);
-    ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
-    PetscFunctionReturn(0);
-  }
   ierr = PetscSNPrintf(filename,sizeof(filename),tj->dirfiletemplate,stepnum);CHKERRQ(ierr);
-  ierr = OutputBIN(comm,filename,&viewer);CHKERRQ(ierr);
-  ierr = VecView(X,viewer);CHKERRQ(ierr);
-  ierr = PetscViewerBinaryWrite(viewer,&time,1,PETSC_REAL,PETSC_FALSE);CHKERRQ(ierr);
+  ierr = PetscViewerFileSetName(tjbasic->viewer,filename);CHKERRQ(ierr); /* this triggers PetscViewer to be set up again */
+  ierr = PetscViewerSetUp(tjbasic->viewer);CHKERRQ(ierr);
+  ierr = VecView(X,tjbasic->viewer);CHKERRQ(ierr);
+  ierr = PetscViewerBinaryWrite(tjbasic->viewer,&time,1,PETSC_REAL,PETSC_FALSE);CHKERRQ(ierr);
+  if (stepnum && !tj->solution_only) {
+    Vec       *Y;
+    PetscReal tprev;
 
-  ierr = TSGetStages(ts,&ns,&Y);CHKERRQ(ierr);
-  for (i=0;i<ns;i++) {
-    ierr = VecView(Y[i],viewer);CHKERRQ(ierr);
+    ierr = TSGetStages(ts,&ns,&Y);CHKERRQ(ierr);
+    for (i=0; i<ns; i++) {
+      ierr = VecView(Y[i],tjbasic->viewer);CHKERRQ(ierr);
+    }
+    ierr = TSGetPrevTime(ts,&tprev);CHKERRQ(ierr);
+    ierr = PetscViewerBinaryWrite(tjbasic->viewer,&tprev,1,PETSC_REAL,PETSC_FALSE);CHKERRQ(ierr);
   }
+  /* Tangent linear sensitivities needed by second-order adjoint */
+  if (ts->forward_solve) {
+    Mat A,*S;
 
-  ierr = TSGetPrevTime(ts,&tprev);CHKERRQ(ierr);
-  ierr = PetscViewerBinaryWrite(viewer,&tprev,1,PETSC_REAL,PETSC_FALSE);CHKERRQ(ierr);
+    ierr = TSForwardGetSensitivities(ts,NULL,&A);CHKERRQ(ierr);
+    ierr = MatView(A,tjbasic->viewer);CHKERRQ(ierr);
+    if (stepnum) {
+      ierr = TSForwardGetStages(ts,&ns,&S);CHKERRQ(ierr);
+      for (i=0; i<ns; i++) {
+        ierr = MatView(S[i],tjbasic->viewer);CHKERRQ(ierr);
+      }
+    }
+  }
+  PetscFunctionReturn(0);
+}
 
-  ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
+static PetscErrorCode TSTrajectorySetFromOptions_Basic(PetscOptionItems *PetscOptionsObject,TSTrajectory tj)
+{
+  PetscErrorCode ierr;
+
+  PetscFunctionBegin;
+  ierr = PetscOptionsHead(PetscOptionsObject,"TS trajectory options for Basic type");CHKERRQ(ierr);
+  ierr = PetscOptionsTail();CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
 static PetscErrorCode TSTrajectoryGet_Basic(TSTrajectory tj,TS ts,PetscInt stepnum,PetscReal *t)
 {
-  Vec            Sol,*Y;
-  PetscInt       Nr,i;
   PetscViewer    viewer;
-  PetscReal      timepre;
   char           filename[PETSC_MAX_PATH_LEN];
   PetscErrorCode ierr;
+  Vec            Sol;
+  PetscInt       ns,i;
 
   PetscFunctionBegin;
-  ierr = PetscSNPrintf(filename,sizeof filename,tj->dirfiletemplate,stepnum);CHKERRQ(ierr);
-  ierr = PetscViewerBinaryOpen(PETSC_COMM_WORLD,filename,FILE_MODE_READ,&viewer);CHKERRQ(ierr);
-
+  ierr = PetscSNPrintf(filename,sizeof(filename),tj->dirfiletemplate,stepnum);CHKERRQ(ierr);
+  ierr = PetscViewerBinaryOpen(PetscObjectComm((PetscObject)tj),filename,FILE_MODE_READ,&viewer);CHKERRQ(ierr);
   ierr = TSGetSolution(ts,&Sol);CHKERRQ(ierr);
+  ierr = PetscViewerPushFormat(viewer,PETSC_VIEWER_NATIVE);CHKERRQ(ierr);
   ierr = VecLoad(Sol,viewer);CHKERRQ(ierr);
-
   ierr = PetscViewerBinaryRead(viewer,t,1,NULL,PETSC_REAL);CHKERRQ(ierr);
+  if (stepnum && !tj->solution_only) {
+    Vec       *Y;
+    PetscReal timepre;
 
-  if (stepnum != 0) {
-    ierr = TSGetStages(ts,&Nr,&Y);CHKERRQ(ierr);
-    for (i=0;i<Nr ;i++) {
+    ierr = TSGetStages(ts,&ns,&Y);CHKERRQ(ierr);
+    for (i=0; i<ns; i++) {
       ierr = VecLoad(Y[i],viewer);CHKERRQ(ierr);
     }
     ierr = PetscViewerBinaryRead(viewer,&timepre,1,NULL,PETSC_REAL);CHKERRQ(ierr);
-    ierr = TSSetTimeStep(ts,-(*t)+timepre);CHKERRQ(ierr);
+    if (tj->adjoint_solve_mode) {
+      ierr = TSSetTimeStep(ts,-(*t)+timepre);CHKERRQ(ierr);
+    }
   }
+  /* Tangent linear sensitivities needed by second-order adjoint */
+  if (ts->forward_solve) {
+    Mat A,*S;
 
+    ierr = TSForwardGetSensitivities(ts,NULL,&A);CHKERRQ(ierr);
+    ierr = MatLoad(A,viewer);CHKERRQ(ierr);
+    if (stepnum) {
+      ierr = TSForwardGetStages(ts,&ns,&S);CHKERRQ(ierr);
+      for (i=0; i<ns; i++) {
+        ierr = MatLoad(S[i],viewer);CHKERRQ(ierr);
+      }
+    }
+  }
   ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode TSTrajectorySetUp_Basic(TSTrajectory tj,TS ts)
+{
+  MPI_Comm       comm;
+  PetscMPIInt    rank;
+  PetscErrorCode ierr;
+
+  PetscFunctionBegin;
+  ierr = PetscObjectGetComm((PetscObject)tj,&comm);CHKERRQ(ierr);
+  ierr = MPI_Comm_rank(comm,&rank);CHKERRQ(ierr);
+  if (!rank) {
+    char      *dir = tj->dirname;
+    PetscBool flg;
+
+    if (!dir) {
+      char dtempname[16] = "TS-data-XXXXXX";
+      ierr = PetscMkdtemp(dtempname);CHKERRQ(ierr);
+      ierr = PetscStrallocpy(dtempname,&tj->dirname);CHKERRQ(ierr);
+    } else {
+      ierr = PetscTestDirectory(dir,'w',&flg);CHKERRQ(ierr);
+      if (!flg) {
+        ierr = PetscTestFile(dir,'r',&flg);CHKERRQ(ierr);
+        if (flg) SETERRQ1(PETSC_COMM_SELF,PETSC_ERR_USER,"Specified path is a file - not a dir: %s",dir);
+        ierr = PetscMkdir(dir);CHKERRQ(ierr);
+      } else SETERRQ1(comm,PETSC_ERR_SUP,"Directory %s not empty",tj->dirname);
+    }
+  }
+  ierr = PetscBarrier((PetscObject)tj);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
 static PetscErrorCode TSTrajectoryDestroy_Basic(TSTrajectory tj)
 {
-  PetscErrorCode ierr;
-  PetscMPIInt    rank;
-  MPI_Comm       comm;
+  TSTrajectory_Basic *tjbasic = (TSTrajectory_Basic*)tj->data;
+  PetscErrorCode     ierr;
 
   PetscFunctionBegin;
-  if (!tj->keepfiles) {
-    ierr = PetscObjectGetComm((PetscObject)tj,&comm);CHKERRQ(ierr);
-    ierr = MPI_Comm_rank(comm,&rank);CHKERRQ(ierr);
-    if (!rank) {
-      ierr = PetscRMTree(tj->dirname);CHKERRQ(ierr);
-    }
-  }
+  ierr = PetscViewerDestroy(&tjbasic->viewer);CHKERRQ(ierr);
+  ierr = PetscFree(tjbasic);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
 /*MC
       TSTRAJECTORYBASIC - Stores each solution of the ODE/DAE in a file
 
-      Saves each timestep into a seperate file named SA-data/SA-%06d.bin. The file name can be changed.
+      Saves each timestep into a seperate file named TS-data-XXXXXX/TS-%06d.bin. The file name can be changed.
 
       This version saves the solutions at all the stages
 
@@ -121,10 +157,22 @@ static PetscErrorCode TSTrajectoryDestroy_Basic(TSTrajectory tj)
 M*/
 PETSC_EXTERN PetscErrorCode TSTrajectoryCreate_Basic(TSTrajectory tj,TS ts)
 {
+  TSTrajectory_Basic *tjbasic;
+  PetscErrorCode     ierr;
+
   PetscFunctionBegin;
-  tj->keepfiles    = PETSC_FALSE;
-  tj->ops->set     = TSTrajectorySet_Basic;
-  tj->ops->get     = TSTrajectoryGet_Basic;
-  tj->ops->destroy = TSTrajectoryDestroy_Basic;
+  ierr = PetscNew(&tjbasic);CHKERRQ(ierr);
+
+  ierr = PetscViewerCreate(PetscObjectComm((PetscObject)tj),&tjbasic->viewer);CHKERRQ(ierr);
+  ierr = PetscViewerSetType(tjbasic->viewer,PETSCVIEWERBINARY);CHKERRQ(ierr);
+  ierr = PetscViewerPushFormat(tjbasic->viewer,PETSC_VIEWER_NATIVE);CHKERRQ(ierr);
+  ierr = PetscViewerFileSetMode(tjbasic->viewer,FILE_MODE_WRITE);CHKERRQ(ierr);
+  tj->data = tjbasic;
+
+  tj->ops->set            = TSTrajectorySet_Basic;
+  tj->ops->get            = TSTrajectoryGet_Basic;
+  tj->ops->setup          = TSTrajectorySetUp_Basic;
+  tj->ops->destroy        = TSTrajectoryDestroy_Basic;
+  tj->ops->setfromoptions = TSTrajectorySetFromOptions_Basic;
   PetscFunctionReturn(0);
 }

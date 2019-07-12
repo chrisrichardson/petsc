@@ -20,6 +20,13 @@ T*/
 */
 #include <petscksp.h>
 
+typedef enum {
+  RHS_FILE,
+  RHS_ONE,
+  RHS_RANDOM
+} RHSType;
+const char *const RHSTypes[] = {"FILE", "ONE", "RANDOM", "RHSType", "RHS_", NULL};
+
 /* ATTENTION: this is the example used in the Profiling chaper of the PETSc manual,
    where we referenced its profiling stages, preloading and output etc.
    When you modify it, please make sure it is still consistent with the manual.
@@ -33,7 +40,8 @@ int main(int argc,char **args)
   PetscReal         norm;        /* norm of solution error */
   char              file[2][PETSC_MAX_PATH_LEN];
   PetscViewer       viewer;      /* viewer */
-  PetscBool         flg,preload=PETSC_FALSE,same;
+  PetscBool         flg,preload=PETSC_FALSE,same,trans=PETSC_FALSE;
+  RHSType           rhstype = RHS_FILE;
   PetscInt          its,j,len,start,idx,n1,n2;
   const PetscScalar *val;
 
@@ -43,6 +51,7 @@ int main(int argc,char **args)
      Determine files from which we read the two linear systems
      (matrix and right-hand-side vector).
   */
+  ierr = PetscOptionsGetBool(NULL,NULL,"-trans",&trans,&flg);CHKERRQ(ierr);
   ierr = PetscOptionsGetString(NULL,NULL,"-f",file[0],PETSC_MAX_PATH_LEN,&flg);CHKERRQ(ierr);
   if (flg) {
     ierr    = PetscStrcpy(file[1],file[0]);CHKERRQ(ierr);
@@ -53,6 +62,7 @@ int main(int argc,char **args)
     ierr = PetscOptionsGetString(NULL,NULL,"-f1",file[1],PETSC_MAX_PATH_LEN,&flg);CHKERRQ(ierr);
     if (!flg) preload = PETSC_FALSE;   /* don't bother with second system */
   }
+  ierr = PetscOptionsGetEnum(NULL,NULL,"-rhs",RHSTypes,(PetscEnum*)&rhstype,NULL);CHKERRQ(ierr);
 
   /*
     To use preloading, one usually has code like the following:
@@ -85,7 +95,7 @@ int main(int argc,char **args)
   PetscPreLoadBegin(preload,"Load System 0");
 
   /*=========================
-      solve a samll system
+      solve a small system
     =========================*/
 
   /* open binary file. Note that we use FILE_MODE_READ to indicate reading from this file */
@@ -93,10 +103,25 @@ int main(int argc,char **args)
 
   /* load the matrix and vector; then destroy the viewer */
   ierr = MatCreate(PETSC_COMM_WORLD,&A);CHKERRQ(ierr);
-  ierr = VecCreate(PETSC_COMM_WORLD,&b);CHKERRQ(ierr);
   ierr = MatSetFromOptions(A);CHKERRQ(ierr);
   ierr = MatLoad(A,viewer);CHKERRQ(ierr);
-  ierr = VecLoad(b,viewer);CHKERRQ(ierr);
+  switch (rhstype) {
+  case RHS_FILE:
+    /* Vectors in the file might a different size than the matrix so we need a
+     * Vec whose size hasn't been set yet.  It'll get fixed below.  Otherwise we
+     * can create the correct size Vec. */
+    ierr = VecCreate(PETSC_COMM_WORLD,&b);CHKERRQ(ierr);
+    ierr = VecLoad(b,viewer);CHKERRQ(ierr);
+    break;
+  case RHS_ONE:
+    ierr = MatCreateVecs(A,&b,NULL);CHKERRQ(ierr);
+    ierr = VecSet(b,1.0);CHKERRQ(ierr);
+    break;
+  case RHS_RANDOM:
+    ierr = MatCreateVecs(A,&b,NULL);CHKERRQ(ierr);
+    ierr = VecSetRandom(b,NULL);CHKERRQ(ierr);
+    break;
+  }
   ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
 
   /* if the loaded matrix is larger than the vector (due to being padded
@@ -141,7 +166,8 @@ int main(int argc,char **args)
   ierr = KSPSetUpOnBlocks(ksp);CHKERRQ(ierr);
 
   PetscPreLoadStage("KSPSolve 0");
-  ierr = KSPSolve(ksp,b,x);CHKERRQ(ierr);
+  if (trans) {ierr = KSPSolveTranspose(ksp,b,x);CHKERRQ(ierr);}
+  else       {ierr = KSPSolve(ksp,b,x);CHKERRQ(ierr);}
 
   ierr = KSPGetTotalIterations(ksp,&its);CHKERRQ(ierr);
   ierr = PetscPrintf(PETSC_COMM_WORLD,"Number of iterations = %d\n",its);CHKERRQ(ierr);
@@ -161,17 +187,31 @@ int main(int argc,char **args)
   /*=========================
     solve a large system
     =========================*/
-
   /* the code is duplicated. Bad practice. See comments above */
   PetscPreLoadStage("Load System 1");
   ierr = PetscViewerBinaryOpen(PETSC_COMM_WORLD,file[1],FILE_MODE_READ,&viewer);CHKERRQ(ierr);
 
   /* load the matrix and vector; then destroy the viewer */
   ierr = MatCreate(PETSC_COMM_WORLD,&A);CHKERRQ(ierr);
-  ierr = VecCreate(PETSC_COMM_WORLD,&b);CHKERRQ(ierr);
   ierr = MatSetFromOptions(A);CHKERRQ(ierr);
   ierr = MatLoad(A,viewer);CHKERRQ(ierr);
-  ierr = VecLoad(b,viewer);CHKERRQ(ierr);
+  switch (rhstype) {
+  case RHS_FILE:
+    /* Vectors in the file might a different size than the matrix so we need a
+     * Vec whose size hasn't been set yet.  It'll get fixed below.  Otherwise we
+     * can create the correct size Vec. */
+    ierr = VecCreate(PETSC_COMM_WORLD,&b);CHKERRQ(ierr);
+    ierr = VecLoad(b,viewer);CHKERRQ(ierr);
+    break;
+  case RHS_ONE:
+    ierr = MatCreateVecs(A,&b,NULL);CHKERRQ(ierr);
+    ierr = VecSet(b,1.0);CHKERRQ(ierr);
+    break;
+  case RHS_RANDOM:
+    ierr = MatCreateVecs(A,&b,NULL);CHKERRQ(ierr);
+    ierr = VecSetRandom(b,NULL);CHKERRQ(ierr);
+    break;
+  }
   ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
 
   ierr = MatGetLocalSize(A,NULL,&n1);CHKERRQ(ierr);
@@ -212,7 +252,9 @@ int main(int argc,char **args)
   ierr = KSPSetUpOnBlocks(ksp);CHKERRQ(ierr);
 
   PetscPreLoadStage("KSPSolve 1");
-  ierr = KSPSolve(ksp,b,x);CHKERRQ(ierr);
+  if (trans) {ierr = KSPSolveTranspose(ksp,b,x);CHKERRQ(ierr);}
+  else       {ierr = KSPSolve(ksp,b,x);CHKERRQ(ierr);}
+
   ierr = KSPGetTotalIterations(ksp,&its);CHKERRQ(ierr);
   ierr = PetscPrintf(PETSC_COMM_WORLD,"Number of iterations = %d\n",its);CHKERRQ(ierr);
 
@@ -227,7 +269,6 @@ int main(int argc,char **args)
   ierr = MatDestroy(&A);CHKERRQ(ierr);
   ierr = VecDestroy(&x);CHKERRQ(ierr);
   ierr = VecDestroy(&b);CHKERRQ(ierr);
-
   PetscPreLoadEnd();
   /*
      Always call PetscFinalize() before exiting a program.  This routine
@@ -246,5 +287,12 @@ int main(int argc,char **args)
       output_file: output/ex10_1.out
       requires: datafilespath double !complex !define(PETSC_USE_64BIT_INDICES)
       args: -f0 ${DATAFILESPATH}/matrices/medium -f1 ${DATAFILESPATH}/matrices/arco6 -ksp_gmres_classicalgramschmidt -mat_type baij -matload_block_size 3 -pc_type bjacobi
+
+   test:
+      suffix: 2
+      nsize: 4
+      output_file: output/ex10_2.out
+      requires: datafilespath double !complex !define(PETSC_USE_64BIT_INDICES)
+      args: -f0 ${DATAFILESPATH}/matrices/medium -f1 ${DATAFILESPATH}/matrices/arco6 -ksp_gmres_classicalgramschmidt -mat_type baij -matload_block_size 3 -pc_type bjacobi -trans
 
 TEST*/

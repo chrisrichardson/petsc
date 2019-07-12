@@ -1,5 +1,5 @@
-#ifndef _PETSCDRAWTYPES_H
-#define _PETSCDRAWTYPES_H
+#ifndef PETSCDRAWTYPES_H
+#define PETSCDRAWTYPES_H
 
 /*J
     PetscDrawType - String with the name of a PetscDraw
@@ -9,20 +9,16 @@
 .seealso: PetscDrawSetType(), PetscDraw, PetscViewer, PetscDrawCreate()
 J*/
 typedef const char* PetscDrawType;
-#define PETSC_DRAW_X          "x"
-#define PETSC_DRAW_GLUT       "glut"
-#define PETSC_DRAW_OPENGLES   "opengles"
-#define PETSC_DRAW_NULL       "null"
-#define PETSC_DRAW_WIN32      "win32"
-#define PETSC_DRAW_TIKZ       "tikz"
-#define PETSC_DRAW_IMAGE      "image"
+#define PETSC_DRAW_X     "x"
+#define PETSC_DRAW_NULL  "null"
+#define PETSC_DRAW_WIN32 "win32"
+#define PETSC_DRAW_TIKZ  "tikz"
+#define PETSC_DRAW_IMAGE "image"
 
 /*S
      PetscDraw - Abstract PETSc object for graphics
 
    Level: beginner
-
-  Concepts: graphics
 
 .seealso:  PetscDrawCreate(), PetscDrawSetType(), PetscDrawType
 S*/
@@ -33,8 +29,6 @@ typedef struct _p_PetscDraw* PetscDraw;
 
    Level: advanced
 
-  Concepts: graphics, axis
-
 .seealso:  PetscDrawAxisCreate(), PetscDrawAxisSetLimits(), PetscDrawAxisSetColors(), PetscDrawAxisSetLabels()
 S*/
 typedef struct _p_PetscDrawAxis* PetscDrawAxis;
@@ -43,8 +37,6 @@ typedef struct _p_PetscDrawAxis* PetscDrawAxis;
      PetscDrawLG - Manages drawing x-y plots
 
    Level: advanced
-
-  Concepts: graphics, axis
 
 .seealso:  PetscDrawAxisCreate(), PetscDrawLGCreate(), PetscDrawLGAddPoint()
 S*/
@@ -55,8 +47,6 @@ typedef struct _p_PetscDrawLG*   PetscDrawLG;
 
    Level: advanced
 
-  Concepts: graphics, scatter plots
-
 .seealso:  PetscDrawSPCreate()
 S*/
 typedef struct _p_PetscDrawSP*   PetscDrawSP;
@@ -66,8 +56,6 @@ typedef struct _p_PetscDrawSP*   PetscDrawSP;
 
    Level: advanced
 
-  Concepts: graphics, histograms
-
 .seealso:  PetscDrawHGCreate()
 S*/
 typedef struct _p_PetscDrawHG*   PetscDrawHG;
@@ -76,8 +64,6 @@ typedef struct _p_PetscDrawHG*   PetscDrawHG;
      PetscDrawBar - Manages drawing bar graphs
 
    Level: advanced
-
-  Concepts: graphics, histograms
 
 .seealso:  PetscDrawBarCreate()
 S*/

@@ -4,7 +4,9 @@ import os
 class Configure(config.package.CMakePackage):
   def __init__(self, framework):
     config.package.CMakePackage.__init__(self, framework)
-    self.gitcommit         = 'v5.4.0'
+    self.version          = '6.1.1'
+    self.versionname      = 'SUPERLU_DIST_MAJOR_VERSION.SUPERLU_DIST_MINOR_VERSION.SUPERLU_DIST_PATCH_VERSION'
+    self.gitcommit         = 'v'+self.version
     self.download         = ['git://https://github.com/xiaoyeli/superlu_dist','https://github.com/xiaoyeli/superlu_dist/archive/'+self.gitcommit+'.tar.gz']
     self.downloaddirnames = ['SuperLU_DIST','superlu_dist']
     self.functions        = ['set_default_options_dist']
@@ -17,6 +19,8 @@ class Configure(config.package.CMakePackage):
     self.hastestsdatafiles= 1
     self.requirec99flag   = 1 # SuperLU_Dist uses C99 features
     self.precisions       = ['double']
+    self.cxx              = 1
+    self.requirescxx11    = 1
     return
 
   def setupHelp(self, help):
@@ -42,13 +46,17 @@ class Configure(config.package.CMakePackage):
     args = config.package.CMakePackage.formCMakeConfigureArgs(self)
     if not self.framework.argDB['download-superlu_dist-gpu']:
       args.append('-DCMAKE_DISABLE_FIND_PACKAGE_OpenMP=TRUE')
+    else:
+      self.usesopenmp = 'yes'
     args.append('-DUSE_XSDK_DEFAULTS=YES')
     args.append('-DTPL_BLAS_LIBRARIES="'+self.libraries.toString(self.blasLapack.dlib)+'"')
+    args.append('-DTPL_LAPACK_LIBRARIES="'+self.libraries.toString(self.blasLapack.dlib)+'"')
     if self.parmetis.found:
       args.append('-DTPL_PARMETIS_INCLUDE_DIRS="'+';'.join(self.parmetis.dinclude)+'"')
       args.append('-DTPL_PARMETIS_LIBRARIES="'+self.libraries.toString(self.parmetis.dlib)+'"')
     else:
       args.append('-Denable_parmetislib=FALSE')
+      args.append('-DTPL_ENABLE_PARMETISLIB=FALSE')
 
     if self.getDefaultIndexSize() == 64:
       args.append('-DXSDK_INDEX_SIZE=64')
@@ -63,6 +71,7 @@ class Configure(config.package.CMakePackage):
     args.append('-DMPI_C_COMPILER:STRING="'+self.framework.getCompiler()+'"')
     args.append('-DMPI_C_COMPILE_FLAGS:STRING=""')
     args.append('-DMPI_C_INCLUDE_PATH:STRING=""')
+    args.append('-DMPI_C_HEADER_DIR:STRING=""')
     args.append('-DMPI_C_LIBRARIES:STRING=""')
     args.append('-DCMAKE_INSTALL_LIBDIR:STRING="'+os.path.join(self.installDir,self.libdir)+'"')
 

@@ -1,18 +1,18 @@
 # -*- mode: makefile-gmake -*-
 
-CONFIGDIR := config
+CONFIGDIR := $(PETSC_DIR)/config
 
 # TESTSRCDIR is always relative to gmakefile.test
 #  This must be before includes
-mkfile_path := $(abspath $(MAKEFILE_LIST))
-TESTSRCDIR := $(dir $(abspath $(firstword $(MAKEFILE_LIST))))src
+mkfile_path := $(abspath $(lastword $(MAKEFILE_LIST)))
+TESTSRCDIR := $(dir $(mkfile_path))src
 
 include $(PETSC_DIR)/$(PETSC_ARCH)/lib/petsc/conf/petscvariables
 include $(PETSC_DIR)/lib/petsc/conf/variables
 
 TESTDIR ?= ./$(PETSC_ARCH)/tests
 MODDIR := $(PETSC_DIR)/$(PETSC_ARCH)/include
-TESTLOGFILE = $(TESTDIR)/examples_$(PETSC_ARCH).log
+TESTLOGFILE ?= $(TESTDIR)/examples_$(PETSC_ARCH).log
 EXAMPLESDIR := $(TESTSRCDIR)
 
 pkgs := sys vec mat dm ksp snes ts tao
@@ -75,8 +75,6 @@ ifdef TIMEOUT
   TESTFLAGS += -t $(TIMEOUT)  # Override the default timeout
 endif
 
-
-
 $(generatedtest) : $(petscconf) $(petscvariables) $(CONFIGDIR)/gmakegentest.py $(TESTDIR)/.DIR | $$(@D)/.DIR
 	$(PYTHON) $(CONFIGDIR)/gmakegentest.py --petsc-dir=$(PETSC_DIR) --petsc-arch=$(PETSC_ARCH) --testdir=$(TESTDIR)
 
@@ -116,22 +114,22 @@ $(TESTDIR)/%.o : $(EXAMPLESDIR)/%.cu | $$(@D)/.DIR
 	$(PETSC_COMPILE.cu) $(abspath $<) -o $@ # Compile first so that if there is an error, it comes from a normal compile
 	@$(PETSC_GENDEPS.cu) $(abspath $<) -o $(@:%.o=%.d) # Generate the dependencies for later
 
-# Test modules go in a different directory
-$(TESTDIR)/%.o : MODDIR = $(@D)
+# Test modules go in the same directory as the target *.o
+TESTMODDIR = $(@D)
 FCMOD = cd
 $(TESTDIR)/%.o : $(EXAMPLESDIR)/%.F | $$(@D)/.DIR
 ifeq ($(FC_MODULE_OUTPUT_FLAG),)
-	$(call quiet,FCMOD) $(MODDIR) && $(FC) -c $(FC_FLAGS) $(FFLAGS) $(FCPPFLAGS) $(FC_DEPFLAGS) -I$(dir $<) $(abspath $<) -o $(abspath $@)
+	$(call quiet,FCMOD) $(TESTMODDIR) && $(FC) -c $(FC_FLAGS) $(FFLAGS) $(FCPPFLAGS) $(FC_DEPFLAGS) -I$(dir $<) $(abspath $<) -o $(abspath $@)
 else
-	$(PETSC_COMPILE.F) -I$(dir $<) $(abspath $<) -o $@ $(FC_MODULE_OUTPUT_FLAG)$(MODDIR) $(FC_MODULE_FLAG)$(MODDIR)
+	$(PETSC_COMPILE.F) -I$(dir $<) $(abspath $<) -o $@ $(FC_MODULE_OUTPUT_FLAG)$(TESTMODDIR) $(FC_MODULE_FLAG)$(TESTMODDIR)
 endif
 	-@$(GFORTRAN_DEP_CLEANUP)
 
 $(TESTDIR)/%.o : $(EXAMPLESDIR)/%.F90 | $$(@D)/.DIR
 ifeq ($(FC_MODULE_OUTPUT_FLAG),)
-	$(call quiet,FCMOD) $(MODDIR) && $(FC) -c $(FC_FLAGS) $(FFLAGS) $(FCPPFLAGS) $(FC_DEPFLAGS) -I$(dir $<) $(abspath $<) -o $(abspath $@)
+	$(call quiet,FCMOD) $(TESTMODDIR) && $(FC) -c $(FC_FLAGS) $(FFLAGS) $(FCPPFLAGS) $(FC_DEPFLAGS) -I$(dir $<) $(abspath $<) -o $(abspath $@)
 else
-	$(PETSC_COMPILE.F) -I$(dir $<) $(abspath $<) -o $@ $(FC_MODULE_OUTPUT_FLAG)$(MODDIR) $(FC_MODULE_FLAG)$(MODDIR)
+	$(PETSC_COMPILE.F) -I$(dir $<) $(abspath $<) -o $@ $(FC_MODULE_OUTPUT_FLAG)$(TESTMODDIR) $(FC_MODULE_FLAG)$(TESTMODDIR)
 endif
 	-@$(GFORTRAN_DEP_CLEANUP)
 
@@ -151,6 +149,16 @@ else
 PETSC_TEST_LIB = $(C_SH_LIB_PATH) $(PETSC_EXTERNAL_LIB_BASIC)
 endif
 
+# manually list some some library dependencies to check for circular dependencies
+$(TESTDIR)/sys/examples/tests/ex9: PETSC_TEST_LIB = $(PETSC_SYS_LIB)
+$(TESTDIR)/vec/vec/examples/tests/ex1: PETSC_TEST_LIB = $(PETSC_VEC_LIB)
+$(TESTDIR)/mat/examples/tests/ex1: PETSC_TEST_LIB = $(PETSC_MAT_LIB)
+$(TESTDIR)/dm/examples/tests/ex1: PETSC_TEST_LIB = $(PETSC_DM_LIB)
+$(TESTDIR)/ksp/ksp/examples/tests/ex1: PETSC_TEST_LIB = $(PETSC_KSP_LIB)
+$(TESTDIR)/snes/examples/tests/ex1: PETSC_TEST_LIB = $(PETSC_SNES_LIB)
+$(TESTDIR)/ts/examples/tests/ex2: PETSC_TEST_LIB = $(PETSC_TS_LIB)
+$(TESTDIR)/tao/examples/tutorials/ex1: PETSC_TEST_LIB = $(PETSC_TAO_LIB)
+
 # Test executables
 $(testexe.F) $(testexe.F90) : $(TESTDIR)/% : $(TESTDIR)/%.o $$^ $(libpetscall)
 	$(call quiet,FLINKER) -o $@ $^ $(PETSC_TEST_LIB)
@@ -167,12 +175,14 @@ $(foreach pkg, $(pkgs), $(call concattestlang,$(pkg),F F90)) : $(libpetscall)
 # Testing convenience targets
 .PHONY: test pre-clean
 
-test: pre-clean report_tests
+test:
+	+@${OMAKE} -f gmakefile.test pre-clean
+	+@${OMAKE} -f gmakefile.test report_tests
 
 pre-clean:
-	@$(eval STARTTIME := $(shell date +%s))
 	@$(RM) -rf $(TESTDIR)/counts $(TESTLOGFILE)
 	@touch $(TESTLOGFILE)
+	@echo "Using MAKEFLAGS:" ${MAKEFLAGS}
 
 .PHONY: $(foreach pkg, $(pkgs), test-$(pkg) $(foreach lang, $(testlangs), test-$(pkg).$(lang) test-rm-$(pkg).$(lang)))
 testpkgs := $(foreach pkg, $(pkgs), test-$(pkg))
@@ -215,16 +225,12 @@ $(testsrcs.o) : $(petscvariables)
 .SUFFIXES: # Clear .SUFFIXES because we don't use implicit rules
 .DELETE_ON_ERROR:               # Delete likely-corrupt target file if rule fails
 
-.PHONY: clean cleantest all print
+.PHONY: clean cleantest all
 
 cleantest:
 	${RM} -r $(TESTDIR) $(generatedtest)
 
 clean: cleantest
-
-# make print VAR=the-variable
-print:
-	@echo $($(VAR))
 
 alltest.d := $(testsrcs.o:%.o=%.d)
 # Tell make that alltest.d are all up to date.  Without this, the include
@@ -257,7 +263,7 @@ else ifdef searchin
 else ifdef argsearch
   TESTTARGETS := $(foreach v,$(alltesttargets),$(if $(findstring $(argsearch),$($(v)_ARGS)),$(v)))
 else ifdef globsearch
-  TESTTARGETS := $(shell $(PYTHON) -c"import sys,fnmatch; print ' '.join(fnmatch.filter(sys.argv[2].split(),sys.argv[1]))" '$(globsearch)' '$(alltesttargets)')
+  TESTTARGETS := $(shell $(PYTHON) -c"import sys,fnmatch; print(' '.join(fnmatch.filter(sys.argv[2].split(),sys.argv[1])))" '$(globsearch)' '$(alltesttargets)')
 else                            # No filter - run them all, but delete the executables as we go
   TESTTARGETS := $(testpkgs)
 endif
@@ -267,7 +273,11 @@ endif
 print-test:
 	-@echo $(TESTTARGETS)
 
-report_tests: $(TESTTARGETS)
+# time will not be completely accurate because it is one of the parallel jobs and depends on when gnumake schedules it
+starttime:
+	@$(eval STARTTIME := $(shell date +%s))
+
+report_tests: starttime $(TESTTARGETS)
 	@$(eval ENDTIME := $(shell date +%s))
 	-@elapsed_time=$$(($(ENDTIME)- $(STARTTIME))) && \
 	$(PYTHON) $(CONFIGDIR)/report_tests.py -m $(MAKE) -d $(TESTDIR)/counts -t 5 -e $${elapsed_time}

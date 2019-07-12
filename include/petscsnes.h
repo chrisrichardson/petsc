@@ -1,8 +1,8 @@
 /*
     User interface for the nonlinear solvers package.
 */
-#if !defined(__PETSCSNES_H)
-#define __PETSCSNES_H
+#if !defined(PETSCSNES_H)
+#define PETSCSNES_H
 #include <petscksp.h>
 #include <petscdmtypes.h>
 #include <petscfvtypes.h>
@@ -12,8 +12,6 @@
      SNES - Abstract PETSc object that manages all nonlinear solves
 
    Level: beginner
-
-  Concepts: nonlinear solvers
 
 .seealso:  SNESCreate(), SNESSetType(), SNESType, TS, KSP, KSP, PC, SNESDestroy()
 S*/
@@ -27,25 +25,26 @@ typedef struct _p_SNES* SNES;
 .seealso: SNESSetType(), SNES, SNESCreate(), SNESDestroy(), SNESSetFromOptions()
 J*/
 typedef const char* SNESType;
-#define SNESNEWTONLS     "newtonls"
-#define SNESNEWTONTR     "newtontr"
-#define SNESPYTHON       "python"
-#define SNESTEST         "test"
-#define SNESNRICHARDSON  "nrichardson"
-#define SNESKSPONLY      "ksponly"
-#define SNESVINEWTONRSLS "vinewtonrsls"
-#define SNESVINEWTONSSLS "vinewtonssls"
-#define SNESNGMRES       "ngmres"
-#define SNESQN           "qn"
-#define SNESSHELL        "shell"
-#define SNESNGS          "ngs"
-#define SNESNCG          "ncg"
-#define SNESFAS          "fas"
-#define SNESMS           "ms"
-#define SNESNASM         "nasm"
-#define SNESANDERSON     "anderson"
-#define SNESASPIN        "aspin"
-#define SNESCOMPOSITE    "composite"
+#define SNESNEWTONLS         "newtonls"
+#define SNESNEWTONTR         "newtontr"
+#define SNESPYTHON           "python"
+#define SNESNRICHARDSON      "nrichardson"
+#define SNESKSPONLY          "ksponly"
+#define SNESKSPTRANSPOSEONLY "ksptransposeonly"
+#define SNESVINEWTONRSLS     "vinewtonrsls"
+#define SNESVINEWTONSSLS     "vinewtonssls"
+#define SNESNGMRES           "ngmres"
+#define SNESQN               "qn"
+#define SNESSHELL            "shell"
+#define SNESNGS              "ngs"
+#define SNESNCG              "ncg"
+#define SNESFAS              "fas"
+#define SNESMS               "ms"
+#define SNESNASM             "nasm"
+#define SNESANDERSON         "anderson"
+#define SNESASPIN            "aspin"
+#define SNESCOMPOSITE        "composite"
+#define SNESPATCH            "patch"
 
 /* Logging support */
 PETSC_EXTERN PetscClassId SNES_CLASSID;
@@ -176,6 +175,10 @@ PETSC_EXTERN PetscErrorCode SNESPythonSetType(SNES,const char[]);
 
 PETSC_EXTERN PetscErrorCode SNESSetFunctionDomainError(SNES);
 PETSC_EXTERN PetscErrorCode SNESGetFunctionDomainError(SNES, PetscBool *);
+PETSC_EXTERN PetscErrorCode SNESGetJacobianDomainError(SNES,PetscBool*);
+PETSC_EXTERN PetscErrorCode SNESSetJacobianDomainError(SNES);
+PETSC_EXTERN PetscErrorCode SNESSetCheckJacobianDomainError(SNES,PetscBool);
+PETSC_EXTERN PetscErrorCode SNESGetCheckJacobianDomainError(SNES,PetscBool*);
 
 /*E
     SNESConvergedReason - reason a SNES method was said to
@@ -243,6 +246,7 @@ typedef enum {/* converged */
               SNES_DIVERGED_INNER               = -7, /* inner solve failed */
               SNES_DIVERGED_LOCAL_MIN           = -8, /* || J^T b || is small, implies converged to local minimum of F() */
               SNES_DIVERGED_DTOL                = -9, /* || F || > divtol*||F_initial|| */
+              SNES_DIVERGED_JACOBIAN_DOMAIN     = -10, /* Jacobian calculation does not make sense */
 
               SNES_CONVERGED_ITERATING          =  0} SNESConvergedReason;
 PETSC_EXTERN const char *const*SNESConvergedReasons;
@@ -350,7 +354,7 @@ PETSC_EXTERN PetscErrorCode SNESConvergedSkip(SNES,PetscInt,PetscReal,PetscReal,
 PETSC_EXTERN PetscErrorCode SNESGetConvergedReason(SNES,SNESConvergedReason*);
 PETSC_EXTERN PetscErrorCode SNESSetConvergedReason(SNES,SNESConvergedReason);
 
-PETSC_DEPRECATED("Use SNESConvergedSkip()") PETSC_STATIC_INLINE void SNESSkipConverged(void) { /* never called */ }
+PETSC_DEPRECATED_FUNCTION("Use SNESConvergedSkip() (since version 3.5)") PETSC_STATIC_INLINE void SNESSkipConverged(void) { /* never called */ }
 #define SNESSkipConverged (SNESSkipConverged, SNESConvergedSkip)
 
 /* --------- Solving systems of nonlinear equations --------------- */
@@ -463,6 +467,8 @@ PETSC_EXTERN PetscErrorCode SNESSetNormSchedule(SNES,SNESNormSchedule);
 PETSC_EXTERN PetscErrorCode SNESGetNormSchedule(SNES,SNESNormSchedule*);
 PETSC_EXTERN PetscErrorCode SNESSetFunctionNorm(SNES,PetscReal);
 PETSC_EXTERN PetscErrorCode SNESGetFunctionNorm(SNES,PetscReal*);
+PETSC_EXTERN PetscErrorCode SNESGetUpdateNorm(SNES,PetscReal*);
+PETSC_EXTERN PetscErrorCode SNESGetSolutionNorm(SNES,PetscReal*);
 
 /*E
     SNESFunctionType - Type of function computed
@@ -509,8 +515,6 @@ PETSC_EXTERN PetscErrorCode SNESShellSetSolve(SNES,PetscErrorCode (*)(SNES,Vec))
      SNESLineSearch - Abstract PETSc object that manages line-search operations
 
    Level: beginner
-
-  Concepts: nonlinear solvers, line search
 
 .seealso:  SNESLineSearchCreate(), SNESLineSearchSetType(), SNES
 S*/
@@ -673,8 +677,8 @@ PETSC_EXTERN PetscErrorCode SNESGetLineSearch(SNES,SNESLineSearch*);
 PETSC_EXTERN PetscErrorCode SNESRestrictHookAdd(SNES,PetscErrorCode (*)(SNES,SNES,void*),void*);
 PETSC_EXTERN PetscErrorCode SNESRestrictHooksRun(SNES,SNES);
 
-PETSC_DEPRECATED("Use SNESGetLineSearch()") PETSC_STATIC_INLINE PetscErrorCode SNESGetSNESLineSearch(SNES snes,SNESLineSearch *ls) {return SNESGetLineSearch(snes,ls);}
-PETSC_DEPRECATED("Use SNESSetLineSearch()") PETSC_STATIC_INLINE PetscErrorCode SNESSetSNESLineSearch(SNES snes,SNESLineSearch ls) {return SNESSetLineSearch(snes,ls);}
+PETSC_DEPRECATED_FUNCTION("Use SNESGetLineSearch() (since version 3.4)") PETSC_STATIC_INLINE PetscErrorCode SNESGetSNESLineSearch(SNES snes,SNESLineSearch *ls) {return SNESGetLineSearch(snes,ls);}
+PETSC_DEPRECATED_FUNCTION("Use SNESSetLineSearch() (since version 3.4)") PETSC_STATIC_INLINE PetscErrorCode SNESSetSNESLineSearch(SNES snes,SNESLineSearch ls) {return SNESSetLineSearch(snes,ls);}
 
 PETSC_EXTERN PetscErrorCode SNESSetUpMatrices(SNES);
 PETSC_EXTERN PetscErrorCode DMSNESSetFunction(DM,PetscErrorCode(*)(SNES,Vec,Vec,void*),void*);
@@ -700,12 +704,6 @@ PETSC_EXTERN PetscErrorCode DMDASNESSetPicardLocal(DM,InsertMode,PetscErrorCode 
 
 PETSC_EXTERN PetscErrorCode DMPlexSNESGetGeometryFVM(DM,Vec*,Vec*,PetscReal*);
 PETSC_EXTERN PetscErrorCode DMPlexSNESGetGradientDM(DM,PetscFV,DM*);
-PETSC_EXTERN PetscErrorCode DMPlexGetCellFields(DM, IS, Vec, Vec, Vec, PetscScalar **, PetscScalar **, PetscScalar **);
-PETSC_EXTERN PetscErrorCode DMPlexRestoreCellFields(DM, IS, Vec, Vec, Vec, PetscScalar **, PetscScalar **, PetscScalar **);
-PETSC_EXTERN PetscErrorCode DMPlexGetFaceFields(DM, PetscInt, PetscInt, Vec, Vec, Vec, Vec, Vec, PetscInt *, PetscScalar **, PetscScalar **);
-PETSC_EXTERN PetscErrorCode DMPlexRestoreFaceFields(DM, PetscInt, PetscInt, Vec, Vec, Vec, Vec, Vec, PetscInt *, PetscScalar **, PetscScalar **);
-PETSC_EXTERN PetscErrorCode DMPlexGetFaceGeometry(DM, PetscInt, PetscInt, Vec, Vec, PetscInt *, PetscFVFaceGeom **, PetscReal **);
-PETSC_EXTERN PetscErrorCode DMPlexRestoreFaceGeometry(DM, PetscInt, PetscInt, Vec, Vec, PetscInt *, PetscFVFaceGeom **, PetscReal **);
 
 PETSC_EXTERN PetscErrorCode DMSNESSetBoundaryLocal(DM,PetscErrorCode (*)(DM,Vec,void*),void*);
 PETSC_EXTERN PetscErrorCode DMSNESSetFunctionLocal(DM,PetscErrorCode (*)(DM,Vec,Vec,void*),void*);
@@ -813,6 +811,12 @@ PETSC_EXTERN PetscErrorCode SNESCompositeGetSNES(SNES,PetscInt,SNES *);
 PETSC_EXTERN PetscErrorCode SNESCompositeGetNumber(SNES,PetscInt*);
 PETSC_EXTERN PetscErrorCode SNESCompositeSetDamping(SNES,PetscInt,PetscReal);
 
+PETSC_EXTERN PetscErrorCode SNESPatchSetDiscretisationInfo(SNES,PetscInt,DM*,PetscInt*,PetscInt*,const PetscInt**,const PetscInt*,PetscInt,const PetscInt*,PetscInt,const PetscInt*);
+PETSC_EXTERN PetscErrorCode SNESPatchSetComputeOperator(SNES, PetscErrorCode (*func)(PC, PetscInt, Vec, Mat, IS, PetscInt, const PetscInt *, const PetscInt *, void *), void*);
+PETSC_EXTERN PetscErrorCode SNESPatchSetComputeFunction(SNES, PetscErrorCode (*func)(PC, PetscInt, Vec, Vec, IS, PetscInt, const PetscInt *, const PetscInt *, void *), void*);
+PETSC_EXTERN PetscErrorCode SNESPatchSetConstructType(SNES,PCPatchConstructType, PetscErrorCode (*func)(PC, PetscInt *, IS **, IS *, void *), void*);
+PETSC_EXTERN PetscErrorCode SNESPatchSetCellNumbering(SNES,PetscSection);
+
 /*E
     SNESFASType - Determines the type of nonlinear multigrid method that is run.
 
@@ -878,6 +882,9 @@ PETSC_EXTERN PetscErrorCode SNESFASFullSetDownSweep(SNES,PetscBool);
 PETSC_EXTERN PetscErrorCode SNESFASCreateCoarseVec(SNES,Vec*);
 PETSC_EXTERN PetscErrorCode SNESFASRestrict(SNES,Vec,Vec);
 
+PETSC_EXTERN PetscErrorCode DMSNESCheckDiscretization(SNES,DM,Vec,PetscErrorCode (**)(PetscInt,PetscReal,const PetscReal[],PetscInt,PetscScalar*,void*),void**,PetscReal,PetscReal[]);
+PETSC_EXTERN PetscErrorCode DMSNESCheckResidual(SNES,DM,Vec,PetscReal,PetscReal*);
+PETSC_EXTERN PetscErrorCode DMSNESCheckJacobian(SNES,DM,Vec,PetscReal,PetscBool*,PetscReal*);
 PETSC_EXTERN PetscErrorCode DMSNESCheckFromOptions(SNES,Vec,PetscErrorCode (**)(PetscInt,PetscReal,const PetscReal[],PetscInt,PetscScalar*,void*),void**);
 
 #endif

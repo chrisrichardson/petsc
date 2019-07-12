@@ -90,6 +90,8 @@ struct _p_SNES {
   PetscInt    iter;               /* global iteration number */
   PetscInt    linear_its;         /* total number of linear solver iterations */
   PetscReal   norm;               /* residual norm of current iterate */
+  PetscReal   ynorm;              /* update norm of current iterate */
+  PetscReal   xnorm;              /* solution norm of current iterate */
   PetscReal   rtol;               /* relative tolerance */
   PetscReal   divtol;             /* relative divergence tolerance */
   PetscReal   abstol;             /* absolute tolerance */
@@ -125,8 +127,7 @@ struct _p_SNES {
   PetscInt    conv_hist_len;      /* size of convergence history array */
   PetscInt    conv_hist_max;      /* actual amount of data in conv_history */
   PetscBool   conv_hist_reset;    /* reset counter for each new SNES solve */
-  PetscBool   conv_malloc;
-
+  PetscBool   conv_hist_alloc;
   PetscBool    counters_reset;    /* reset counter for each new SNES solve */
 
   /* the next two are used for failures in the line search; they should be put elsewhere */
@@ -137,6 +138,8 @@ struct _p_SNES {
   PetscInt    maxLinearSolveFailures;
 
   PetscBool   domainerror;       /* set with SNESSetFunctionDomainError() */
+  PetscBool   jacobiandomainerror; /* set with SNESSetJacobianDomainError() */
+  PetscBool   checkjacdomainerror; /* if or not check Jacobian domain error after Jacobian evaluations */
 
   PetscBool   ksp_ewconv;        /* flag indicating use of Eisenstat-Walker KSP convergence criteria */
   void        *kspconvctx;       /* Eisenstat-Walker KSP convergence context */
@@ -252,9 +255,10 @@ PETSC_INTERN PetscErrorCode SNESVISetVariableBounds_VI(SNES,Vec,Vec);
 PETSC_INTERN PetscErrorCode SNESConvergedDefault_VI(SNES,PetscInt,PetscReal,PetscReal,PetscReal,SNESConvergedReason*,void*);
 
 PetscErrorCode SNESScaleStep_Private(SNES,Vec,PetscReal*,PetscReal*,PetscReal*,PetscReal*);
-PETSC_EXTERN PetscErrorCode DMSNESCheckFromOptions_Internal(SNES,DM,Vec,PetscErrorCode (**)(PetscInt,PetscReal,const PetscReal[],PetscInt,PetscScalar*,void*),void**);
+PETSC_EXTERN PetscErrorCode DMSNESCheck_Internal(SNES,DM,Vec,PetscErrorCode (**)(PetscInt,PetscReal,const PetscReal[],PetscInt,PetscScalar*,void*),void**);
 
 PETSC_EXTERN PetscLogEvent SNES_Solve;
+PETSC_EXTERN PetscLogEvent SNES_Setup;
 PETSC_EXTERN PetscLogEvent SNES_LineSearch;
 PETSC_EXTERN PetscLogEvent SNES_FunctionEval;
 PETSC_EXTERN PetscLogEvent SNES_JacobianEval;
@@ -269,7 +273,7 @@ PETSC_INTERN const char SNESCitation[];
 /*
     Either generate an error or mark as diverged when a real from a SNES function norm is Nan or Inf
 */
-#define SNESCheckFunctionNorm(snes,beta) \
+#define SNESCheckFunctionNorm(snes,beta) do { \
   if (PetscIsInfOrNanReal(beta)) {\
     if (snes->errorifnotconverged) SETERRQ(PetscObjectComm((PetscObject)snes),PETSC_ERR_NOT_CONVERGED,"SNESSolve has not converged due to Nan or Inf norm");\
     else {\
@@ -279,12 +283,28 @@ PETSC_INTERN const char SNESCitation[];
       else              snes->reason = SNES_DIVERGED_FNORM_NAN;\
       PetscFunctionReturn(0);\
     }\
-  }
+  } } while (0)
+
+#define SNESCheckJacobianDomainerror(snes) do { \
+  if (snes->checkjacdomainerror) {\
+   PetscBool domainerror;\
+   PetscErrorCode ierr = MPIU_Allreduce((int*)&snes->jacobiandomainerror,(int*)&domainerror,1,MPI_INT,MPI_MAX,PetscObjectComm((PetscObject)snes));CHKERRQ(ierr);\
+   if (domainerror) {\
+     snes->reason = SNES_DIVERGED_JACOBIAN_DOMAIN;\
+     if (snes->errorifnotconverged) SETERRQ(PetscObjectComm((PetscObject)snes),PETSC_ERR_NOT_CONVERGED,"SNESSolve has not converged due to Jacobian domain error");\
+     PetscFunctionReturn(0);\
+   }\
+  } } while (0)
+
 
 #define SNESCheckKSPSolve(snes)\
-  {\
+  do {\
     KSPConvergedReason kspreason; \
-    PetscErrorCode ierr = KSPGetConvergedReason(snes->ksp,&kspreason);CHKERRQ(ierr);\
+    PetscErrorCode ierr;                                                \
+    PetscInt lits;                                                      \
+    ierr = KSPGetIterationNumber(snes->ksp,&lits);CHKERRQ(ierr);        \
+    snes->linear_its += lits;                                           \
+    ierr = KSPGetConvergedReason(snes->ksp,&kspreason);CHKERRQ(ierr);\
     if (kspreason < 0) {\
       if (kspreason == KSP_DIVERGED_NANORINF) {\
         PetscBool domainerror;\
@@ -300,6 +320,6 @@ PETSC_INTERN const char SNESCitation[];
         }\
       }\
     }\
-  }
+  } while (0)
 
 #endif

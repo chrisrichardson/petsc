@@ -8,7 +8,7 @@
 
 #include <cublas_v2.h>
 
-#define WaitForGPU() PetscCUDASynchronize ? cudaThreadSynchronize() : 0
+#define WaitForGPU() PetscCUDASynchronize ? cudaDeviceSynchronize() : 0
 
 #endif
 
@@ -38,7 +38,7 @@ PETSC_INTERN PetscErrorCode VecTDot_SeqCUDA(Vec,Vec,PetscScalar*);
 PETSC_INTERN PetscErrorCode VecScale_SeqCUDA(Vec,PetscScalar);
 PETSC_EXTERN PetscErrorCode VecCopy_SeqCUDA(Vec,Vec);
 PETSC_INTERN PetscErrorCode VecSwap_SeqCUDA(Vec,Vec);
-PETSC_INTERN PetscErrorCode VecAXPY_SeqCUDA(Vec,PetscScalar,Vec);
+PETSC_EXTERN PetscErrorCode VecAXPY_SeqCUDA(Vec,PetscScalar,Vec);
 PETSC_INTERN PetscErrorCode VecAXPBY_SeqCUDA(Vec,PetscScalar,PetscScalar,Vec);
 PETSC_INTERN PetscErrorCode VecDuplicate_SeqCUDA(Vec,Vec*);
 PETSC_INTERN PetscErrorCode VecConjugate_SeqCUDA(Vec xin);
@@ -62,8 +62,8 @@ PETSC_INTERN PetscErrorCode VecDestroy_SeqCUDA_Private(Vec v);
 PETSC_INTERN PetscErrorCode VecResetArray_SeqCUDA_Private(Vec vin);
 PETSC_INTERN PetscErrorCode VecCUDACopyToGPU_Public(Vec);
 PETSC_INTERN PetscErrorCode VecCUDAAllocateCheck_Public(Vec);
-PETSC_INTERN PetscErrorCode VecCUDACopyToGPUSome(Vec v, PetscCUDAIndices ci);
-PETSC_INTERN PetscErrorCode VecCUDACopyFromGPUSome(Vec v, PetscCUDAIndices ci);
+PETSC_INTERN PetscErrorCode VecCUDACopyToGPUSome(Vec,PetscCUDAIndices,ScatterMode);
+PETSC_INTERN PetscErrorCode VecCUDACopyFromGPUSome(Vec,PetscCUDAIndices,ScatterMode);
 
 PETSC_INTERN PetscErrorCode VecScatterCUDAIndicesCreate_PtoP(PetscInt, PetscInt*,PetscInt, PetscInt*,PetscCUDAIndices*);
 PETSC_INTERN PetscErrorCode VecScatterCUDAIndicesCreate_StoS(PetscInt,PetscInt,PetscInt,PetscInt,PetscInt,PetscInt*,PetscInt*,PetscCUDAIndices*);

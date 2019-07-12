@@ -16,7 +16,7 @@ PetscErrorCode MatFDColoringCreate_SeqXAIJ(Mat mat,ISColoring iscoloring,MatFDCo
   PetscFunctionBegin;
   /* set default brows and bcols for speedup inserting the dense matrix into sparse Jacobian */
   ierr = MatGetBlockSize(mat,&bs);CHKERRQ(ierr);
-  ierr = PetscObjectTypeCompare((PetscObject)mat,MATSEQBAIJ,&isBAIJ);CHKERRQ(ierr);
+  ierr = PetscObjectBaseTypeCompare((PetscObject)mat,MATSEQBAIJ,&isBAIJ);CHKERRQ(ierr);
   ierr = PetscObjectTypeCompare((PetscObject)mat,MATSEQSELL,&isSELL);CHKERRQ(ierr);
   if (isBAIJ) {
     c->brows = m;
@@ -172,20 +172,20 @@ PetscErrorCode MatFDColoringSetUpBlocked_AIJ_Private(Mat mat,MatFDColoring c,Pet
 
 PetscErrorCode MatFDColoringSetUp_SeqXAIJ(Mat mat,ISColoring iscoloring,MatFDColoring c)
 {
-  PetscErrorCode ierr;
-  PetscInt       i,n,nrows,mbs=c->m,j,k,m,ncols,col,nis=iscoloring->n,*rowhit,bs,bs2,*spidx,nz;
-  const PetscInt *is,*row,*ci,*cj;
-  IS             *isa;
-  PetscBool      isBAIJ,isSELL;
-  PetscScalar    *A_val,**valaddrhit;
-  MatEntry       *Jentry;
-  MatEntry2      *Jentry2;
+  PetscErrorCode    ierr;
+  PetscInt          i,n,nrows,mbs=c->m,j,k,m,ncols,col,nis=iscoloring->n,*rowhit,bs,bs2,*spidx,nz,tmp;
+  const PetscInt    *is,*row,*ci,*cj;
+  PetscBool         isBAIJ,isSELL;
+  const PetscScalar *A_val;
+  PetscScalar       **valaddrhit;
+  MatEntry          *Jentry;
+  MatEntry2         *Jentry2;
 
   PetscFunctionBegin;
-  ierr = ISColoringGetIS(iscoloring,PETSC_IGNORE,&isa);CHKERRQ(ierr);
+  ierr = ISColoringGetIS(iscoloring,PETSC_OWN_POINTER,PETSC_IGNORE,&c->isa);CHKERRQ(ierr);
 
   ierr = MatGetBlockSize(mat,&bs);CHKERRQ(ierr);
-  ierr = PetscObjectTypeCompare((PetscObject)mat,MATSEQBAIJ,&isBAIJ);CHKERRQ(ierr);
+  ierr = PetscObjectBaseTypeCompare((PetscObject)mat,MATSEQBAIJ,&isBAIJ);CHKERRQ(ierr);
   ierr = PetscObjectTypeCompare((PetscObject)mat,MATSEQSELL,&isSELL);CHKERRQ(ierr);
   if (isBAIJ) {
     Mat_SeqBAIJ *spA = (Mat_SeqBAIJ*)mat->data;
@@ -203,9 +203,8 @@ PetscErrorCode MatFDColoringSetUp_SeqXAIJ(Mat mat,ISColoring iscoloring,MatFDCol
     bs    = 1; /* only bs=1 is supported for SeqAIJ matrix */
   }
 
-  ierr       = PetscMalloc1(nis,&c->ncolumns);CHKERRQ(ierr);
-  ierr       = PetscMalloc1(nis,&c->columns);CHKERRQ(ierr);
-  ierr       = PetscMalloc1(nis,&c->nrows);CHKERRQ(ierr);
+  ierr       = PetscMalloc2(nis,&c->ncolumns,nis,&c->columns);CHKERRQ(ierr);
+  ierr       = PetscMalloc1(nis,&c->nrows);CHKERRQ(ierr); /* nrows is freeed seperately from ncolumns and columns */ 
   ierr       = PetscLogObjectMemory((PetscObject)c,3*nis*sizeof(PetscInt));CHKERRQ(ierr);
 
   if (c->htype[0] == 'd') {
@@ -226,34 +225,31 @@ PetscErrorCode MatFDColoringSetUp_SeqXAIJ(Mat mat,ISColoring iscoloring,MatFDCol
     ierr = MatGetColumnIJ_SeqAIJ_Color(mat,0,PETSC_FALSE,PETSC_FALSE,&ncols,&ci,&cj,&spidx,NULL);CHKERRQ(ierr);
   }
 
-  ierr = PetscMalloc2(c->m,&rowhit,c->m,&valaddrhit);CHKERRQ(ierr);
-  ierr = PetscMemzero(rowhit,c->m*sizeof(PetscInt));CHKERRQ(ierr);
+  ierr = PetscCalloc1(c->m,&rowhit);CHKERRQ(ierr);
+  ierr = PetscMalloc1(c->m,&valaddrhit);CHKERRQ(ierr);
 
   nz = 0;
   for (i=0; i<nis; i++) { /* loop over colors */
-    ierr = ISGetLocalSize(isa[i],&n);CHKERRQ(ierr);
-    ierr = ISGetIndices(isa[i],&is);CHKERRQ(ierr);
+    ierr = ISGetLocalSize(c->isa[i],&n);CHKERRQ(ierr);
+    ierr = ISGetIndices(c->isa[i],&is);CHKERRQ(ierr);
 
     c->ncolumns[i] = n;
-    if (n) {
-      ierr = PetscMalloc1(n,&c->columns[i]);CHKERRQ(ierr);
-      ierr = PetscLogObjectMemory((PetscObject)c,n*sizeof(PetscInt));CHKERRQ(ierr);
-      ierr = PetscMemcpy(c->columns[i],is,n*sizeof(PetscInt));CHKERRQ(ierr);
-    } else {
-      c->columns[i] = 0;
-    }
+    c->columns[i]  = (PetscInt*)is;
+    /* note: we know that c->isa is going to be around as long at the c->columns values */
+    ierr = ISRestoreIndices(c->isa[i],&is);CHKERRQ(ierr);
 
     /* fast, crude version requires O(N*N) work */
     bs2   = bs*bs;
     nrows = 0;
     for (j=0; j<n; j++) {  /* loop over columns */
       col    = is[j];
-      row    = cj + ci[col];
-      m      = ci[col+1] - ci[col];
+      tmp    = ci[col];
+      row    = cj + tmp;
+      m      = ci[col+1] - tmp;
       nrows += m;
       for (k=0; k<m; k++) {  /* loop over columns marking them in rowhit */
         rowhit[*row]       = col + 1;
-        valaddrhit[*row++] = &A_val[bs2*spidx[ci[col] + k]];
+        valaddrhit[*row++] = (PetscScalar*)&A_val[bs2*spidx[tmp + k]];
       }
     }
     c->nrows[i] = nrows; /* total num of rows for this color */
@@ -278,7 +274,6 @@ PetscErrorCode MatFDColoringSetUp_SeqXAIJ(Mat mat,ISColoring iscoloring,MatFDCol
         }
       }
     }
-    ierr = ISRestoreIndices(isa[i],&is);CHKERRQ(ierr);
   }
 
   if (c->bcols > 1) {  /* reorder Jentry for faster MatFDColoringApply() */
@@ -294,8 +289,9 @@ PetscErrorCode MatFDColoringSetUp_SeqXAIJ(Mat mat,ISColoring iscoloring,MatFDCol
   } else {
     ierr = MatRestoreColumnIJ_SeqAIJ_Color(mat,0,PETSC_FALSE,PETSC_FALSE,&ncols,&ci,&cj,&spidx,NULL);CHKERRQ(ierr);
   }
-  ierr = PetscFree2(rowhit,valaddrhit);CHKERRQ(ierr);
-  ierr = ISColoringRestoreIS(iscoloring,&isa);CHKERRQ(ierr);
+  ierr = PetscFree(rowhit);CHKERRQ(ierr);
+  ierr = PetscFree(valaddrhit);CHKERRQ(ierr);
+  ierr = ISColoringRestoreIS(iscoloring,PETSC_OWN_POINTER,&c->isa);CHKERRQ(ierr);
 
   ierr = VecCreateGhost(PetscObjectComm((PetscObject)mat),mat->rmap->n,PETSC_DETERMINE,0,NULL,&c->vscale);CHKERRQ(ierr);
   ierr = PetscInfo3(c,"ncolors %D, brows %D and bcols %D are used.\n",c->ncolors,c->brows,c->bcols);CHKERRQ(ierr);

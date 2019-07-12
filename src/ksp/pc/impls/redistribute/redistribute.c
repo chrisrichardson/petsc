@@ -114,7 +114,7 @@ static PetscErrorCode PCSetUp_Redistribute(PC pc)
     */
     /*  count number of contributors to each processor */
     ierr   = PetscMalloc2(size,&sizes,cnt,&owner);CHKERRQ(ierr);
-    ierr   = PetscMemzero(sizes,size*sizeof(PetscMPIInt));CHKERRQ(ierr);
+    ierr   = PetscArrayzero(sizes,size);CHKERRQ(ierr);
     j      = 0;
     nsends = 0;
     for (i=rstart; i<rend; i++) {
@@ -194,7 +194,7 @@ static PetscErrorCode PCSetUp_Redistribute(PC pc)
     ierr = VecCreateMPI(comm,slen,PETSC_DETERMINE,&red->b);CHKERRQ(ierr);
     ierr = VecDuplicate(red->b,&red->x);CHKERRQ(ierr);
     ierr = MatCreateVecs(pc->pmat,&tvec,NULL);CHKERRQ(ierr);
-    ierr = VecScatterCreateWithData(tvec,red->is,red->b,NULL,&red->scatter);CHKERRQ(ierr);
+    ierr = VecScatterCreate(tvec,red->is,red->b,NULL,&red->scatter);CHKERRQ(ierr);
     ierr = VecDestroy(&tvec);CHKERRQ(ierr);
     ierr = MatCreateSubMatrix(pc->pmat,red->is,red->is,MAT_INITIAL_MATRIX,&tmat);CHKERRQ(ierr);
     ierr = KSPSetOperators(red->ksp,tmat,tmat);CHKERRQ(ierr);
@@ -242,6 +242,7 @@ static PetscErrorCode PCApply_Redistribute(PC pc,Vec b,Vec x)
   ierr = VecScatterBegin(red->scatter,red->work,red->b,INSERT_VALUES,SCATTER_FORWARD);CHKERRQ(ierr);
   ierr = VecScatterEnd(red->scatter,red->work,red->b,INSERT_VALUES,SCATTER_FORWARD);CHKERRQ(ierr);
   ierr = KSPSolve(red->ksp,red->b,red->x);CHKERRQ(ierr);
+  ierr = KSPCheckSolve(red->ksp,pc,red->x);CHKERRQ(ierr);
   ierr = VecScatterBegin(red->scatter,red->x,x,INSERT_VALUES,SCATTER_REVERSE);CHKERRQ(ierr);
   ierr = VecScatterEnd(red->scatter,red->x,x,INSERT_VALUES,SCATTER_REVERSE);CHKERRQ(ierr);
   PetscFunctionReturn(0);
@@ -288,7 +289,6 @@ static PetscErrorCode PCSetFromOptions_Redistribute(PetscOptionItems *PetscOptio
 
    Level: advanced
 
-.keywords: PC, redistribute solve
 @*/
 PetscErrorCode  PCRedistributeGetKSP(PC pc,KSP *innerksp)
 {

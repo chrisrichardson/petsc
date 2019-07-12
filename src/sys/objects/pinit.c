@@ -7,7 +7,6 @@
 #include <petscviewer.h>
 
 #if defined(PETSC_USE_LOG)
-PETSC_INTERN PetscErrorCode PetscLogInitialize(void);
 PETSC_INTERN PetscErrorCode PetscLogFinalize(void);
 #endif
 
@@ -43,8 +42,6 @@ PetscMPIInt Petsc_ShmComm_keyval   = MPI_KEYVAL_INVALID;
 */
 const char *const PetscBools[]     = {"FALSE","TRUE","PetscBool","PETSC_",0};
 const char *const PetscCopyModes[] = {"COPY_VALUES","OWN_POINTER","USE_POINTER","PetscCopyMode","PETSC_",0};
-const char *const PetscDataTypes[] = {"INT","DOUBLE","COMPLEX","LONG","SHORT","FLOAT",
-                                      "CHAR","LOGICAL","ENUM","BOOL","LONGDOUBLE","OBJECT","FUNCTION","PetscDataType","PETSC_",0};
 
 PetscBool PetscPreLoadingUsed = PETSC_FALSE;
 PetscBool PetscPreLoadingOn   = PETSC_FALSE;
@@ -104,7 +101,7 @@ PetscErrorCode  PetscInitializeNoPointers(int argc,char **args,const char *filen
   char           **myargs = args;
 
   PetscFunctionBegin;
-  ierr = PetscInitialize(&myargc,&myargs,filename,help);CHKERRQ(ierr);
+  ierr = PetscInitialize(&myargc,&myargs,filename,help);if (ierr) return ierr;
   ierr = PetscPopSignalHandler();CHKERRQ(ierr);
   PetscBeganMPI = PETSC_FALSE;
   PetscFunctionReturn(ierr);
@@ -371,11 +368,9 @@ PETSC_EXTERN PetscMPIInt MPIAPI Petsc_DelComm_Inner(MPI_Comm comm,PetscMPIInt ke
 PETSC_EXTERN PetscMPIInt MPIAPI Petsc_DelComm_Shm(MPI_Comm,PetscMPIInt,void *,void *);
 
 #if defined(PETSC_USE_PETSC_MPI_EXTERNAL32)
-#if !defined(PETSC_WORDS_BIGENDIAN)
 PETSC_EXTERN PetscMPIInt PetscDataRep_extent_fn(MPI_Datatype,MPI_Aint*,void*);
 PETSC_EXTERN PetscMPIInt PetscDataRep_read_conv_fn(void*, MPI_Datatype,PetscMPIInt,void*,MPI_Offset,void*);
 PETSC_EXTERN PetscMPIInt PetscDataRep_write_conv_fn(void*, MPI_Datatype,PetscMPIInt,void*,MPI_Offset,void*);
-#endif
 #endif
 
 PetscMPIInt PETSC_MPI_ERROR_CLASS,PETSC_MPI_ERROR_CODE;
@@ -392,7 +387,7 @@ PetscErrorCode PetscCitationsInitialize(void)
 
   PetscFunctionBegin;
   ierr = PetscSegBufferCreate(1,10000,&PetscCitationsList);CHKERRQ(ierr);
-  ierr = PetscCitationsRegister("@TechReport{petsc-user-ref,\n  Author = {Satish Balay and Shrirang Abhyankar and Mark F. Adams and Jed Brown and Peter Brune\n            and Kris Buschelman and Lisandro Dalcin and Victor Eijkhout and William D. Gropp\n            and Dinesh Kaushik and Matthew G. Knepley and Dave A. May and Lois Curfman McInnes\n            and Richard Tran Mills and Todd Munson and Karl Rupp and Patrick Sanan\n            and Barry F. Smith and Stefano Zampini and Hong Zhang and Hong Zhang},\n  Title = {{PETS}c Users Manual},\n  Number = {ANL-95/11 - Revision 3.9},\n  Institution = {Argonne National Laboratory},\n  Year = {2018}\n}\n",NULL);CHKERRQ(ierr);
+  ierr = PetscCitationsRegister("@TechReport{petsc-user-ref,\n  Author = {Satish Balay and Shrirang Abhyankar and Mark F. Adams and Jed Brown \n            and Peter Brune and Kris Buschelman and Lisandro Dalcin and\n            Victor Eijkhout and William D. Gropp and Dmitry Karpeyev and\n            Dinesh Kaushik and Matthew G. Knepley and Dave A. May and Lois Curfman McInnes\n            and Richard Tran Mills and Todd Munson and Karl Rupp and Patrick Sanan\n            and Barry F. Smith and Stefano Zampini and Hong Zhang and Hong Zhang},\n  Title = {{PETS}c Users Manual},\n  Number = {ANL-95/11 - Revision 3.11},\n  Institution = {Argonne National Laboratory},\n  Year = {2019}\n}\n",NULL);CHKERRQ(ierr);
   ierr = PetscCitationsRegister("@InProceedings{petsc-efficient,\n  Author = {Satish Balay and William D. Gropp and Lois Curfman McInnes and Barry F. Smith},\n  Title = {Efficient Management of Parallelism in Object Oriented Numerical Software Libraries},\n  Booktitle = {Modern Software Tools in Scientific Computing},\n  Editor = {E. Arge and A. M. Bruaset and H. P. Langtangen},\n  Pages = {163--202},\n  Publisher = {Birkh{\\\"{a}}user Press},\n  Year = {1997}\n}\n",NULL);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
@@ -453,8 +448,6 @@ PetscErrorCode  PetscGetProgramName(char name[],size_t len)
 
       The first argument contains the program name as is normal for C arguments.
 
-   Concepts: command line arguments
-
 .seealso: PetscFinalize(), PetscInitializeFortran(), PetscGetArguments()
 
 @*/
@@ -480,8 +473,6 @@ PetscErrorCode  PetscGetArgs(int *argc,char ***args)
 
    Notes:
       This does NOT start with the program name and IS null terminated (final arg is void)
-
-   Concepts: command line arguments
 
 .seealso: PetscFinalize(), PetscInitializeFortran(), PetscGetArgs(), PetscFreeArguments()
 
@@ -511,8 +502,6 @@ PetscErrorCode  PetscGetArguments(char ***args)
 .  args - the command line arguments
 
    Level: intermediate
-
-   Concepts: command line arguments
 
 .seealso: PetscFinalize(), PetscInitializeFortran(), PetscGetArgs(), PetscGetArguments()
 
@@ -612,7 +601,7 @@ PETSC_INTERN PetscErrorCode PetscInitializeSAWs(const char help[])
     ierr = PetscFree(options);CHKERRQ(ierr);
     ierr = PetscGetVersion(version,sizeof(version));CHKERRQ(ierr);
     ierr = PetscSNPrintf(intro,introlen,"<body>\n"
-                                    "<center><h2> <a href=\"http://www.mcs.anl.gov/petsc\">PETSc</a> Application Web server powered by <a href=\"https://bitbucket.org/saws/saws\">SAWs</a> </h2></center>\n"
+                                    "<center><h2> <a href=\"https://www.mcs.anl.gov/petsc\">PETSc</a> Application Web server powered by <a href=\"https://bitbucket.org/saws/saws\">SAWs</a> </h2></center>\n"
                                     "<center>This is the default PETSc application dashboard, from it you can access any published PETSc objects or logging data</center><br><center>%s configured with %s</center><br>\n"
                                     "%s",version,petscconfigureoptions,appline);CHKERRQ(ierr);
     PetscStackCallSAWs(SAWs_Push_Body,("index.html",0,intro));
@@ -655,6 +644,10 @@ int64_t Petsc_adios_group;
 #if defined(PETSC_HAVE_ADIOS2)
 #include <adios2_c.h>
 #endif
+#if defined(PETSC_HAVE_OPENMP)
+#include <omp.h>
+PetscInt PetscNumOMPThreads;
+#endif
 
 /*@C
    PetscInitialize - Initializes the PETSc database and MPI.
@@ -681,11 +674,11 @@ int64_t Petsc_adios_group;
 +  -help [intro] - prints help method for each option; if intro is given the program stops after printing the introductory help message
 .  -start_in_debugger [noxterm,dbx,xdb,gdb,...] - Starts program in debugger
 .  -on_error_attach_debugger [noxterm,dbx,xdb,gdb,...] - Starts debugger when error detected
-.  -on_error_emacs <machinename> causes emacsclient to jump to error file
-.  -on_error_abort calls abort() when error detected (no traceback)
-.  -on_error_mpiabort calls MPI_abort() when error detected
-.  -error_output_stderr prints error messages to stderr instead of the default stdout
-.  -error_output_none does not print the error messages (but handles errors in the same way as if this was not called)
+.  -on_error_emacs <machinename> - causes emacsclient to jump to error file
+.  -on_error_abort - calls abort() when error detected (no traceback)
+.  -on_error_mpiabort - calls MPI_abort() when error detected
+.  -error_output_stderr - prints error messages to stderr instead of the default stdout
+.  -error_output_none - does not print the error messages (but handles errors in the same way as if this was not called)
 .  -debugger_nodes [node1,node2,...] - Indicates nodes to start in debugger
 .  -debugger_pause [sleeptime] (in seconds) - Pauses debugger
 .  -stop_for_debugger - Print message on how to attach debugger manually to
@@ -761,8 +754,6 @@ $       call PetscInitialize(file,ierr)
 
    If your main program is C but you call Fortran code that also uses PETSc you need to call PetscInitializeFortran() soon after
    calling PetscInitialize().
-
-   Concepts: initializing PETSc
 
 .seealso: PetscFinalize(), PetscInitializeFortran(), PetscGetArgs(), PetscInitializeNoArguments()
 
@@ -903,6 +894,13 @@ PetscErrorCode  PetscInitialize(int *argc,char ***args,const char file[],const c
 
   MPIU_BOOL = MPI_INT;
   MPIU_ENUM = MPI_INT;
+  MPIU_FORTRANADDR = (sizeof(void*) == sizeof(int)) ? MPI_INT : MPIU_INT64;
+  if (sizeof(size_t) == sizeof(unsigned)) MPIU_SIZE_T = MPI_UNSIGNED;
+  else if (sizeof(size_t) == sizeof(unsigned long)) MPIU_SIZE_T = MPI_UNSIGNED_LONG;
+#if defined(PETSC_SIZEOF_LONG_LONG)
+  else if (sizeof(size_t) == sizeof(unsigned long long)) MPIU_SIZE_T = MPI_UNSIGNED_LONG_LONG;
+#endif
+  else {(*PetscErrorPrintf)("PetscInitialize: Could not find MPI type for size_t\n"); return PETSC_ERR_SUP_SYS;}
 
   /*
      Initialized the global complex variable; this is because with
@@ -956,7 +954,7 @@ PetscErrorCode  PetscInitialize(int *argc,char ***args,const char file[],const c
   ierr = MPI_Type_contiguous(2,MPIU_SCALAR,&MPIU_2SCALAR);CHKERRQ(ierr);
   ierr = MPI_Type_commit(&MPIU_2SCALAR);CHKERRQ(ierr);
 
-#if defined(PETSC_USE_64BIT_INDICES) || !defined(MPI_2INT)
+#if defined(PETSC_USE_64BIT_INDICES)
   ierr = MPI_Type_contiguous(2,MPIU_INT,&MPIU_2INT);CHKERRQ(ierr);
   ierr = MPI_Type_commit(&MPIU_2INT);CHKERRQ(ierr);
 #endif
@@ -993,11 +991,6 @@ PetscErrorCode  PetscInitialize(int *argc,char ***args,const char file[],const c
   ierr = PetscInitializeSAWs(help);CHKERRQ(ierr);
 #endif
 
-  /* Creates the logging data structures; this is enabled even if logging is not turned on */
-#if defined(PETSC_USE_LOG)
-  ierr = PetscLogInitialize();CHKERRQ(ierr);
-#endif
-
   /*
      Load the dynamic libraries (on machines that support them), this registers all
      the solvers etc. (On non-dynamic machines this initializes the PetscDraw and PetscViewer classes)
@@ -1008,7 +1001,40 @@ PetscErrorCode  PetscInitialize(int *argc,char ***args,const char file[],const c
   ierr = PetscInfo1(0,"PETSc successfully started: number of processors = %d\n",size);CHKERRQ(ierr);
   ierr = PetscGetHostName(hostname,256);CHKERRQ(ierr);
   ierr = PetscInfo1(0,"Running on machine: %s\n",hostname);CHKERRQ(ierr);
+#if defined(PETSC_HAVE_OPENMP)
+  {
+    PetscBool omp_view_flag;
+    char      *threads = getenv("OMP_NUM_THREADS");
 
+   if (threads) {
+     ierr = PetscInfo1(0,"Number of OpenMP threads %s (given by OMP_NUM_THREADS)\n",threads);CHKERRQ(ierr);
+     (void) sscanf(threads, "%" PetscInt_FMT,&PetscNumOMPThreads);
+   } else {
+#define NMAX  10000
+     int          i;
+      PetscScalar *x;
+      ierr = PetscMalloc1(NMAX,&x);CHKERRQ(ierr);
+#pragma omp parallel for
+      for (i=0; i<NMAX; i++) {
+        x[i] = 0.0;
+        PetscNumOMPThreads  = (PetscInt) omp_get_num_threads();
+      }
+      ierr = PetscFree(x);CHKERRQ(ierr);
+      ierr = PetscInfo1(0,"Number of OpenMP threads %D (number not set with OMP_NUM_THREADS, chosen by system)\n",PetscNumOMPThreads);CHKERRQ(ierr);
+    }
+    ierr = PetscOptionsBegin(PETSC_COMM_WORLD,NULL,"OpenMP options","Sys");CHKERRQ(ierr);
+    ierr = PetscOptionsInt("-omp_num_threads","Number of OpenMP threads to use (can also use environmental variable OMP_NUM_THREADS","None",PetscNumOMPThreads,&PetscNumOMPThreads,&flg);CHKERRQ(ierr);
+    ierr = PetscOptionsName("-omp_view","Display OpenMP number of threads",NULL,&omp_view_flag);CHKERRQ(ierr);
+    ierr = PetscOptionsEnd();CHKERRQ(ierr);
+    if (flg) {
+      ierr = PetscInfo1(0,"Number of OpenMP theads %D (given by -omp_num_threads)\n",PetscNumOMPThreads);CHKERRQ(ierr);
+      omp_set_num_threads((int)PetscNumOMPThreads);
+    }
+    if (omp_view_flag) {
+      ierr = PetscPrintf(PETSC_COMM_WORLD,"OpenMP: number of threads %D\n",PetscNumOMPThreads);CHKERRQ(ierr);
+    }
+  }
+#endif
   ierr = PetscOptionsCheckInitial_Components();CHKERRQ(ierr);
   /* Check the options database for options related to the options database itself */
   ierr = PetscOptionsSetFromOptions(NULL);CHKERRQ(ierr);
@@ -1019,9 +1045,9 @@ PetscErrorCode  PetscInitialize(int *argc,char ***args,const char file[],const c
 
       Currently not used because it is not supported by MPICH.
   */
-#if !defined(PETSC_WORDS_BIGENDIAN)
-  ierr = MPI_Register_datarep((char*)"petsc",PetscDataRep_read_conv_fn,PetscDataRep_write_conv_fn,PetscDataRep_extent_fn,NULL);CHKERRQ(ierr);
-#endif
+  if (!PetscBinaryBigEndian()) {
+    ierr = MPI_Register_datarep((char*)"petsc",PetscDataRep_read_conv_fn,PetscDataRep_write_conv_fn,PetscDataRep_extent_fn,NULL);CHKERRQ(ierr);
+  }
 #endif
 
   /*
@@ -1038,7 +1064,7 @@ PetscErrorCode  PetscInitialize(int *argc,char ***args,const char file[],const c
 #if defined(PETSC_HAVE_HWLOC)
   {
     PetscViewer viewer;
-    ierr = PetscOptionsGetViewer(PETSC_COMM_WORLD,NULL,"-process_view",&viewer,NULL,&flg);CHKERRQ(ierr);
+    ierr = PetscOptionsGetViewer(PETSC_COMM_WORLD,NULL,NULL,"-process_view",&viewer,NULL,&flg);CHKERRQ(ierr);
     if (flg) {
       ierr = PetscProcessPlacementView(viewer);CHKERRQ(ierr);
       ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
@@ -1109,7 +1135,7 @@ PetscErrorCode  PetscFreeMPIResources(void)
 #endif
 
   ierr = MPI_Type_free(&MPIU_2SCALAR);CHKERRQ(ierr);
-#if defined(PETSC_USE_64BIT_INDICES) || !defined(MPI_2INT)
+#if defined(PETSC_USE_64BIT_INDICES)
   ierr = MPI_Type_free(&MPIU_2INT);CHKERRQ(ierr);
 #endif
   ierr = MPI_Op_free(&MPIU_MAXSUM_OP);CHKERRQ(ierr);
@@ -1355,32 +1381,29 @@ PetscErrorCode  PetscFinalize(void)
 
   flg3 = PETSC_FALSE; /* default value is required */
   ierr = PetscOptionsGetBool(NULL,NULL,"-options_left",&flg3,&flg1);CHKERRQ(ierr);
-  ierr = PetscOptionsAllUsed(NULL,&nopt);CHKERRQ(ierr);
+#if defined(PETSC_USE_DEBUG)
+  if (!flg1) flg3 = PETSC_TRUE;
+#endif
   if (flg3) {
-    if (!flg2) { /* have not yet printed the options */
+    if (!flg2 && flg1) { /* have not yet printed the options */
       PetscViewer viewer;
       ierr = PetscViewerCreate(PETSC_COMM_WORLD,&viewer);CHKERRQ(ierr);
       ierr = PetscViewerSetType(viewer,PETSCVIEWERASCII);CHKERRQ(ierr);
       ierr = PetscOptionsView(NULL,viewer);CHKERRQ(ierr);
       ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
     }
-    if (!nopt) {
+    ierr = PetscOptionsAllUsed(NULL,&nopt);CHKERRQ(ierr);
+    if (nopt) {
+      ierr = PetscPrintf(PETSC_COMM_WORLD,"WARNING! There are options you set that were not used!\n");CHKERRQ(ierr);
+      ierr = PetscPrintf(PETSC_COMM_WORLD,"WARNING! could be spelling mistake, etc!\n");CHKERRQ(ierr);
+      if (nopt == 1) {
+        ierr = PetscPrintf(PETSC_COMM_WORLD,"There is one unused database option. It is:\n");CHKERRQ(ierr);
+      } else {
+        ierr = PetscPrintf(PETSC_COMM_WORLD,"There are %D unused database options. They are:\n",nopt);CHKERRQ(ierr);
+      }
+    } else if (flg3 && flg1) {
       ierr = PetscPrintf(PETSC_COMM_WORLD,"There are no unused options.\n");CHKERRQ(ierr);
-    } else if (nopt == 1) {
-      ierr = PetscPrintf(PETSC_COMM_WORLD,"There is one unused database option. It is:\n");CHKERRQ(ierr);
-    } else {
-      ierr = PetscPrintf(PETSC_COMM_WORLD,"There are %D unused database options. They are:\n",nopt);CHKERRQ(ierr);
     }
-  }
-#if defined(PETSC_USE_DEBUG)
-  if (nopt && !flg3 && !flg1) {
-    ierr = PetscPrintf(PETSC_COMM_WORLD,"WARNING! There are options you set that were not used!\n");CHKERRQ(ierr);
-    ierr = PetscPrintf(PETSC_COMM_WORLD,"WARNING! could be spelling mistake, etc!\n");CHKERRQ(ierr);
-    ierr = PetscOptionsLeft(NULL);CHKERRQ(ierr);
-  } else if (nopt && flg3) {
-#else
-  if (nopt && flg3) {
-#endif
     ierr = PetscOptionsLeft(NULL);CHKERRQ(ierr);
   }
 

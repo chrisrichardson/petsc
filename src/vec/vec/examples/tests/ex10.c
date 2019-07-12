@@ -2,10 +2,6 @@
 static char help[]= "Scatters from a parallel vector to a sequential vector.\n\
 uses block index sets\n\n";
 
-/*T
-   requires: x
-T*/
-
 #include <petscvec.h>
 
 int main(int argc,char **argv)
@@ -61,7 +57,7 @@ int main(int argc,char **argv)
   ierr = VecAssemblyEnd(y);CHKERRQ(ierr);
 
 
-  ierr = VecScatterCreateWithData(x,isx,y,isy,&ctx);CHKERRQ(ierr);
+  ierr = VecScatterCreate(x,isx,y,isy,&ctx);CHKERRQ(ierr);
   ierr = VecScatterCopy(ctx,&newctx);CHKERRQ(ierr);
   ierr = VecScatterDestroy(&ctx);CHKERRQ(ierr);
 

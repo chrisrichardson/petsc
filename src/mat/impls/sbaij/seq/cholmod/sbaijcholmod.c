@@ -2,7 +2,7 @@
 /*
    Provides an interface to the CHOLMOD sparse solver available through SuiteSparse version 4.2.1
 
-   When build with PETSC_USE_64BIT_INDICES this will use Suitesparse_long as the
+   When built with PETSC_USE_64BIT_INDICES this will use Suitesparse_long as the
    integer type in UMFPACK, otherwise it will use int. This means
    all integers in this file as simply declared as PetscInt. Also it means
    that one cannot use 64BIT_INDICES on 32bit machines [as Suitesparse_long is 32bit only]
@@ -283,7 +283,7 @@ static PetscErrorCode MatSolve_CHOLMOD(Mat F,Vec B,Vec X)
   if (!cholX) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_LIB,"CHOLMOD failed");
   ierr = VecUnWrapCholmodRead(B,&cholB);CHKERRQ(ierr);
   ierr = VecGetArray(X,&x);CHKERRQ(ierr);
-  ierr = PetscMemcpy(x,cholX->x,cholX->nrow*sizeof(*x));CHKERRQ(ierr);
+  ierr = PetscArraycpy(x,(PetscScalar*)cholX->x,cholX->nrow);CHKERRQ(ierr);
   ierr = !cholmod_X_free_dense(&cholX,chol->common);CHKERRQ(ierr);
   ierr = VecRestoreArray(X,&x);CHKERRQ(ierr);
   PetscFunctionReturn(0);

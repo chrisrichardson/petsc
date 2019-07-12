@@ -2,9 +2,10 @@
     Defines profile/logging in PETSc.
 */
 
-#if !defined(__PetscLog_H)
-#define __PetscLog_H
+#if !defined(PETSCLOG_H)
+#define PETSCLOG_H
 #include <petscsys.h>
+#include <petsctime.h>
 
 /* General logging of information; different from event logging */
 PETSC_EXTERN PetscErrorCode PetscInfo_Private(const char[],void*,const char[],...);
@@ -56,6 +57,16 @@ PETSC_EXTERN PetscLogEvent PETSC_LARGEST_EVENT;
 /* Global flop counter */
 PETSC_EXTERN PetscLogDouble petsc_TotalFlops;
 PETSC_EXTERN PetscLogDouble petsc_tmp_flops;
+
+/* Global GPU counters */
+#if defined(PETSC_HAVE_VIENNACL) || defined(PETSC_HAVE_CUDA) 
+PETSC_EXTERN PetscLogDouble petsc_ctog_ct;
+PETSC_EXTERN PetscLogDouble petsc_gtoc_ct;
+PETSC_EXTERN PetscLogDouble petsc_ctog_sz;
+PETSC_EXTERN PetscLogDouble petsc_gtoc_sz;
+PETSC_EXTERN PetscLogDouble petsc_gflops;
+PETSC_EXTERN PetscLogDouble petsc_gtime;
+#endif
 
 /* We must make the following structures available to access the event
      activation flags in the PetscLogEventBegin/End() macros. These are not part of the PETSc public
@@ -128,9 +139,23 @@ typedef struct {
   PetscLogDouble flops, flops2, flopsTmp; /* The flops and flops^2 used in this event */
   PetscLogDouble time, time2, timeTmp;    /* The time and time^2 taken for this event */
   PetscLogDouble syncTime;                /* The synchronization barrier time */
+  PetscLogDouble dof[8];        /* The number of degrees of freedom associated with this event */
+  PetscLogDouble errors[8];     /* The errors (user-defined) associated with this event */
   PetscLogDouble numMessages;   /* The number of messages in this event */
   PetscLogDouble messageLength; /* The total message lengths in this event */
   PetscLogDouble numReductions; /* The number of reductions in this event */
+  PetscLogDouble memIncrease;   /* How much the resident memory has increased in this event */
+  PetscLogDouble mallocIncrease;/* How much the maximum malloced space has increased in this event */
+  PetscLogDouble mallocSpace;   /* How much the space was malloced and kept during this event */
+  PetscLogDouble mallocIncreaseEvent;  /* Maximum of the high water mark with in event minus memory available at the end of the event */
+  #if defined(PETSC_HAVE_VIENNACL) || defined(PETSC_HAVE_CUDA)
+  PetscLogDouble CpuToGpuCount; /* The total number of CPU to GPU copies */
+  PetscLogDouble GpuToCpuCount; /* The total number of GPU to CPU copies */
+  PetscLogDouble CpuToGpuSize;  /* The total size of CPU to GPU copies */
+  PetscLogDouble GpuToCpuSize;  /* The total size of GPU to CPU copies */
+  PetscLogDouble GpuFlops;      /* The flops done on a GPU in this event */
+  PetscLogDouble GpuTime;       /* The time spent on a GPU in this event */
+  #endif
 } PetscEventPerfInfo;
 
 typedef struct _n_PetscEventRegLog *PetscEventRegLog;
@@ -175,7 +200,6 @@ struct _n_PetscStageLog {
 PETSC_EXTERN PetscErrorCode PetscLogObjectParent(PetscObject,PetscObject);
 PETSC_EXTERN PetscErrorCode PetscLogObjectMemory(PetscObject,PetscLogDouble);
 
-
 #if defined(PETSC_USE_LOG)  /* --- Logging is turned on --------------------------------*/
 PETSC_EXTERN PetscStageLog petsc_stageLog;
 PETSC_EXTERN PetscErrorCode PetscLogGetStageLog(PetscStageLog*);
@@ -211,6 +235,42 @@ PETSC_STATIC_INLINE PetscErrorCode PetscLogFlops(PetscLogDouble n)
   PetscFunctionReturn(0);
 }
 
+#if defined(PETSC_HAVE_VIENNACL) || defined(PETSC_HAVE_CUDA)
+PETSC_STATIC_INLINE PetscErrorCode PetscLogCpuToGpu(PetscLogDouble size){
+  PetscFunctionBegin;
+  petsc_ctog_ct += 1;
+  petsc_ctog_sz += size;
+  PetscFunctionReturn(0);
+}
+PETSC_STATIC_INLINE PetscErrorCode PetscLogGpuToCpu(PetscLogDouble size){
+  PetscFunctionBegin;
+  petsc_gtoc_ct += 1;
+  petsc_gtoc_sz += size;
+  PetscFunctionReturn(0);
+}
+PETSC_STATIC_INLINE PetscErrorCode PetscLogGpuFlops(PetscLogDouble n){
+  PetscFunctionBegin;
+#if defined(PETSC_USE_DEBUG)
+  if (n < 0) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_ARG_OUTOFRANGE,"Cannot log negative flops");
+#endif
+  petsc_TotalFlops += PETSC_FLOPS_PER_OP*n;
+  petsc_gflops += PETSC_FLOPS_PER_OP*n;
+  PetscFunctionReturn(0);
+}
+PETSC_STATIC_INLINE PetscErrorCode PetscLogGpuTimeBegin(){
+  PetscErrorCode ierr;
+  PetscFunctionBegin;
+  ierr = PetscTimeSubtract(&petsc_gtime);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+PETSC_STATIC_INLINE PetscErrorCode PetscLogGpuTimeEnd(){
+  PetscErrorCode ierr;
+  PetscFunctionBegin;
+  ierr = PetscTimeAdd(&petsc_gtime);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+#endif
+
 PETSC_EXTERN PetscErrorCode PetscGetFlops(PetscLogDouble *);
 
 #if defined (PETSC_HAVE_MPE)
@@ -223,7 +283,7 @@ PETSC_EXTERN PetscErrorCode (*PetscLogPLE)(PetscLogEvent,int,PetscObject,PetscOb
 PETSC_EXTERN PetscErrorCode (*PetscLogPHC)(PetscObject);
 PETSC_EXTERN PetscErrorCode (*PetscLogPHD)(PetscObject);
 
-#define PetscLogObjectParents(p,n,d)  0;{int _i; for (_i=0; _i<(n); _i++) {ierr = PetscLogObjectParent((PetscObject)(p),(PetscObject)(d)[_i]);CHKERRQ(ierr);}}
+#define PetscLogObjectParents(p,n,d)  0;do{int _i; for (_i=0; _i<(n); _i++) {ierr = PetscLogObjectParent((PetscObject)(p),(PetscObject)(d)[_i]);CHKERRQ(ierr);}}while(0)
 #define PetscLogObjectCreate(h)      ((PetscLogPHC) ? (*PetscLogPHC)((PetscObject)(h)) : 0)
 #define PetscLogObjectDestroy(h)     ((PetscLogPHD) ? (*PetscLogPHD)((PetscObject)(h)) : 0)
 PETSC_EXTERN PetscErrorCode PetscLogObjectState(PetscObject, const char[], ...);
@@ -266,6 +326,8 @@ PETSC_EXTERN PetscErrorCode PetscLogEventActivateClass(PetscClassId);
 PETSC_EXTERN PetscErrorCode PetscLogEventDeactivateClass(PetscClassId);
 PETSC_EXTERN PetscErrorCode PetscLogEventGetId(const char[],PetscLogEvent*);
 PETSC_EXTERN PetscErrorCode PetscLogEventGetPerfInfo(int,PetscLogEvent,PetscEventPerfInfo*);
+PETSC_EXTERN PetscErrorCode PetscLogEventSetDof(PetscLogEvent, PetscInt, PetscLogDouble);
+PETSC_EXTERN PetscErrorCode PetscLogEventSetError(PetscLogEvent, PetscInt, PetscLogDouble);
 
 /* Global counters */
 PETSC_EXTERN PetscLogDouble petsc_irecv_ct;
@@ -284,7 +346,14 @@ PETSC_EXTERN PetscLogDouble petsc_wait_any_ct;
 PETSC_EXTERN PetscLogDouble petsc_wait_all_ct;
 PETSC_EXTERN PetscLogDouble petsc_sum_of_waits_ct;
 
+PETSC_EXTERN PetscBool      PetscLogMemory;
+
 PETSC_EXTERN PetscBool PetscLogSyncOn;  /* true if logging synchronization is enabled */
+PETSC_EXTERN PetscErrorCode PetscLogEventSynchronize(PetscLogEvent, MPI_Comm);
+
+#define PetscLogEventSync(e,comm) \
+  (((PetscLogPLB && petsc_stageLog->stageInfo[petsc_stageLog->curStage].perfInfo.active && petsc_stageLog->stageInfo[petsc_stageLog->curStage].eventLog->eventInfo[e].active) ? \
+    PetscLogEventSynchronize((e),(comm)) : 0 ))
 
 #define PetscLogEventBegin(e,o1,o2,o3,o4) \
   (((PetscLogPLB && petsc_stageLog->stageInfo[petsc_stageLog->curStage].perfInfo.active && petsc_stageLog->stageInfo[petsc_stageLog->curStage].eventLog->eventInfo[e].active) ? \
@@ -310,7 +379,7 @@ PETSC_EXTERN PetscErrorCode PetscLogEventZeroFlops(PetscLogEvent);
 
      It does not work with Windows because winmpich lacks MPI_Type_size()
 */
-#if !defined(__MPIUNI_H) && !defined(PETSC_HAVE_BROKEN_RECURSIVE_MACRO) && !defined (PETSC_HAVE_MPI_MISSING_TYPESIZE)
+#if !defined(MPIUNI_H) && !defined(PETSC_HAVE_BROKEN_RECURSIVE_MACRO) && !defined (PETSC_HAVE_MPI_MISSING_TYPESIZE)
 /*
    Logging of MPI activities
 */
@@ -352,14 +421,14 @@ PETSC_STATIC_INLINE int PetscMPIParallelComm(MPI_Comm comm)
 #define MPI_Isend(buf,count,datatype,dest,tag,comm,request) \
   ((petsc_isend_ct++,0) || PetscMPITypeSize(&(petsc_isend_len),(count),(datatype)) || MPI_Isend((buf),(count),(datatype),(dest),(tag),(comm),(request)))
 
-#define MPI_Startall_irecv(count,number,requests) \
-  ((petsc_irecv_ct += (PetscLogDouble)(number),0) || PetscMPITypeSize(&(petsc_irecv_len),(count),(MPIU_SCALAR)) || MPI_Startall((number),(requests)))
+#define MPI_Startall_irecv(count,datatype,number,requests) \
+  ((petsc_irecv_ct += (PetscLogDouble)(number),0) || PetscMPITypeSize(&(petsc_irecv_len),(count),(datatype)) || ((number) && MPI_Startall((number),(requests))))
 
-#define MPI_Startall_isend(count,number,requests) \
-  ((petsc_isend_ct += (PetscLogDouble)(number),0) || PetscMPITypeSize(&(petsc_isend_len),(count),(MPIU_SCALAR)) || MPI_Startall((number),(requests)))
+#define MPI_Startall_isend(count,datatype,number,requests) \
+  ((petsc_isend_ct += (PetscLogDouble)(number),0) || PetscMPITypeSize(&(petsc_isend_len),(count),(datatype)) || ((number) && MPI_Startall((number),(requests))))
 
-#define MPI_Start_isend(count,requests) \
-  ((petsc_isend_ct++,0) || PetscMPITypeSize((&petsc_isend_len),(count),(MPIU_SCALAR)) || MPI_Start((requests)))
+#define MPI_Start_isend(count,datatype,requests) \
+  ((petsc_isend_ct++,0) || PetscMPITypeSize((&petsc_isend_len),(count),(datatype)) || MPI_Start((requests)))
 
 #define MPI_Recv(buf,count,datatype,source,tag,comm,status) \
   ((petsc_recv_ct++,0) || PetscMPITypeSize((&petsc_recv_len),(count),(datatype)) || MPI_Recv((buf),(count),(datatype),(source),(tag),(comm),(status)))
@@ -411,18 +480,20 @@ PETSC_STATIC_INLINE int PetscMPIParallelComm(MPI_Comm comm)
 
 #else
 
-#define MPI_Startall_irecv(count,number,requests) \
-  (MPI_Startall((number),(requests)))
+#define MPI_Startall_irecv(count,datatype,number,requests) \
+  ((number) && MPI_Startall((number),(requests)))
 
-#define MPI_Startall_isend(count,number,requests) \
-  (MPI_Startall((number),(requests)))
+#define MPI_Startall_isend(count,datatype,number,requests) \
+  ((number) && MPI_Startall((number),(requests)))
 
-#define MPI_Start_isend(count,requests) \
+#define MPI_Start_isend(count,datatype,requests) \
   (MPI_Start((requests)))
 
-#endif /* !__MPIUNI_H && ! PETSC_HAVE_BROKEN_RECURSIVE_MACRO */
+#endif /* !MPIUNI_H && ! PETSC_HAVE_BROKEN_RECURSIVE_MACRO */
 
 #else  /* ---Logging is turned off --------------------------------------------*/
+
+#define PetscLogMemory                     PETSC_FALSE
 
 #define PetscLogFlops(n)                   0
 #define PetscGetFlops(a)                   (*(a) = 0.0,0)
@@ -447,6 +518,8 @@ PETSC_STATIC_INLINE int PetscMPIParallelComm(MPI_Comm comm)
 #define PetscLogEventSetActiveAll(a,b)     0
 #define PetscLogEventGetId(a,b)            (*(b)=0,0)
 #define PetscLogEventGetPerfInfo(a,b,c)    0
+#define PetscLogEventSetDof(a,b,c)         0
+#define PetscLogEventSetError(a,b,c)       0
 
 #define PetscLogPLB                        0
 #define PetscLogPLE                        0
@@ -471,13 +544,14 @@ PETSC_EXTERN PetscErrorCode PetscLogObjectState(PetscObject,const char[],...);
 #define PetscLogViewFromOptions()          0
 #define PetscLogDump(c)                    0
 
+#define PetscLogEventSync(e,comm)          0
 #define PetscLogEventBegin(e,o1,o2,o3,o4)  0
 #define PetscLogEventEnd(e,o1,o2,o3,o4)    0
 
 /* If PETSC_USE_LOG is NOT defined, these still need to be! */
-#define MPI_Startall_irecv(count,number,requests) MPI_Startall(number,requests)
-#define MPI_Startall_isend(count,number,requests) MPI_Startall(number,requests)
-#define MPI_Start_isend(count,requests)           MPI_Start(requests)
+#define MPI_Startall_irecv(count,datatype,number,requests) ((number) && MPI_Startall(number,requests))
+#define MPI_Startall_isend(count,datatype,number,requests) ((number) && MPI_Startall(number,requests))
+#define MPI_Start_isend(count,datatype,requests)           MPI_Start(requests)
 
 #endif   /* PETSC_USE_LOG */
 

@@ -14,7 +14,6 @@ static PetscBool PetscDrawPackageInitialized = PETSC_FALSE;
 
   Level: developer
 
-.keywords: Petsc, destroy, package, mathematica
 .seealso: PetscFinalize()
 @*/
 PetscErrorCode  PetscDrawFinalizePackage(void)
@@ -30,12 +29,11 @@ PetscErrorCode  PetscDrawFinalizePackage(void)
 
 /*@C
   PetscInitializeDrawPackage - This function initializes everything in the PetscDraw package. It is called
-  from PetscDLLibraryRegister() when using dynamic libraries, and on the call to PetscInitialize()
-  when using static libraries.
+  from PetscDLLibraryRegister_petsc() when using dynamic libraries, and on the call to PetscInitialize()
+  when using shared or static libraries.
 
   Level: developer
 
-.keywords: Petsc, initialize, package
 .seealso: PetscInitialize()
 @*/
 PetscErrorCode  PetscDrawInitializePackage(void)
@@ -400,10 +398,6 @@ PetscErrorCode  PetscDrawSetDisplay(PetscDraw draw,const char display[])
 .  draw - the drawing context
 
    Level: intermediate
-
-   Concepts: drawing^double buffer
-   Concepts: graphics^double buffer
-   Concepts: double buffer
 
 @*/
 PetscErrorCode  PetscDrawSetDoubleBuffer(PetscDraw draw)

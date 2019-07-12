@@ -97,8 +97,8 @@
 
 */
 
-#if !defined(__MPIUNI_H)
-#define __MPIUNI_H
+#if !defined(MPIUNI_H)
+#define MPIUNI_H
 
 /* Required by abort() in mpi.c & for win64 */
 #include <petscconf.h>
@@ -135,14 +135,8 @@
 extern "C" {
 #endif
 
-/* MPI_Aint has to be an signed integral type large enough to hold a pointer */
-#if PETSC_SIZEOF_INT == PETSC_SIZEOF_VOID_P
-typedef int MPI_Aint;
-#elif PETSC_SIZEOF_LONG == PETSC_SIZEOF_VOID_P
-typedef long MPI_Aint;
-#else
+/* MPI_Aint has to be a signed integral type large enough to hold a pointer */
 typedef ptrdiff_t MPI_Aint;
-#endif
 
 /* old 32bit MS compiler does not support long long */
 #if defined(PETSC_SIZEOF_LONG_LONG)
@@ -238,11 +232,13 @@ typedef int MPI_Datatype;
 #define MPI_LONG_INT           (12 << 20 | 1 << 8 | (int)(sizeof(long) + sizeof(int)))
 #define MPI_SHORT_INT          (13 << 20 | 1 << 8 | (int)(sizeof(short) + sizeof(int)))
 #define MPI_2INT               (14 << 20 | 1 << 8 | (int)(2*sizeof(int)))
+#define MPI_2DOUBLE            (15 << 20 | 1 << 8 | (int)(2*sizeof(double)))
 
 /* Fortran datatypes; Jed Brown says they should be defined here */
 #define MPI_INTEGER MPI_INT
 #define MPI_DOUBLE_PRECISION MPI_DOUBLE
 #define MPI_COMPLEX16 MPI_C_DOUBLE_COMPLEX
+#define MPI_2DOUBLE_PRECISION MPI_2DOUBLE
 
 #define MPI_ORDER_C            0
 #define MPI_ORDER_FORTRAN      1
@@ -494,6 +490,7 @@ typedef int MPI_Fint;
      (MPIUNI_ARG(count),\
       MPIUNI_ARG(array_of_requests),\
       MPIUNI_ARG(status),\
+      (*(status)).MPI_SOURCE = 0,               \
       *(index) = 0,\
       MPI_SUCCESS)
 #define MPI_Testany(a,b,c,d,e) \
@@ -841,14 +838,9 @@ typedef int MPI_Fint;
       MPIUNI_ARG(comm),\
       MPI_SUCCESS)
 #define MPI_Reduce_scatter(sendbuf,recvbuf,recvcounts,datatype,op,comm) \
-     (MPIUNI_ARG(sendbuf),\
-      MPIUNI_ARG(recvbuf),\
-      MPIUNI_ARG(recvcounts),\
-      MPIUNI_ARG(datatype),\
-      MPIUNI_ARG(op),\
+     (MPIUNI_ARG(op),\
       MPIUNI_ARG(comm),\
-      MPIUni_Abort(MPI_COMM_WORLD,0))
-
+      MPIUNI_Memcpy(recvbuf,sendbuf,(*recvcounts)*MPI_sizeof(datatype)))
 #define MPI_Op_create(function,commute,op) \
      (MPIUNI_ARG(function),\
       MPIUNI_ARG(commute),\

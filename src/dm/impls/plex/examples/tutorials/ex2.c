@@ -36,7 +36,7 @@ static PetscErrorCode ProcessOptions(MPI_Comm comm, AppCtx *options)
   ierr = PetscOptionsBegin(comm, "", "Meshing Problem Options", "DMPLEX");CHKERRQ(ierr);
   ierr = PetscOptionsBool("-interpolate", "Generate intermediate mesh elements", "ex2.c", options->interpolate, &options->interpolate, NULL);CHKERRQ(ierr);
   ierr = PetscOptionsString("-filename", "The mesh file", "ex2.c", options->filename, options->filename, PETSC_MAX_PATH_LEN, NULL);CHKERRQ(ierr);
-  ierr = PetscOptionsInt("-dim", "The dimension of problem used for non-file mesh", "ex2.c", options->dim, &options->dim, NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsRangeInt("-dim", "The dimension of problem used for non-file mesh", "ex2.c", options->dim, &options->dim, NULL,1,3);CHKERRQ(ierr);
   ierr = PetscOptionsEnd();
   PetscFunctionReturn(0);
 }
@@ -70,42 +70,6 @@ static PetscErrorCode CreateMesh(MPI_Comm comm, AppCtx *user, DM *dm)
   PetscFunctionReturn(0);
 }
 
-static PetscErrorCode CheckMeshTopology(DM dm)
-{
-  PetscInt       dim, coneSize, cStart;
-  PetscBool      isSimplex;
-  PetscErrorCode ierr;
-
-  PetscFunctionBeginUser;
-  ierr = DMGetDimension(dm, &dim);CHKERRQ(ierr);
-  ierr = DMPlexGetHeightStratum(dm, 0, &cStart, NULL);CHKERRQ(ierr);
-  ierr = DMPlexGetConeSize(dm, cStart, &coneSize);CHKERRQ(ierr);
-  isSimplex = coneSize == dim+1 ? PETSC_TRUE : PETSC_FALSE;
-  ierr = DMPlexCheckSymmetry(dm);CHKERRQ(ierr);
-  ierr = DMPlexCheckSkeleton(dm, isSimplex, 0);CHKERRQ(ierr);
-  ierr = DMPlexCheckFaces(dm, isSimplex, 0);CHKERRQ(ierr);
-  PetscFunctionReturn(0);
-}
-
-static PetscErrorCode CheckMeshGeometry(DM dm)
-{
-  PetscInt       dim, coneSize, cStart, cEnd, c;
-  PetscReal     *v0, *J, *invJ, detJ;
-  PetscErrorCode ierr;
-
-  PetscFunctionBeginUser;
-  ierr = DMGetDimension(dm, &dim);CHKERRQ(ierr);
-  ierr = DMPlexGetHeightStratum(dm, 0, &cStart, &cEnd);CHKERRQ(ierr);
-  ierr = DMPlexGetConeSize(dm, cStart, &coneSize);CHKERRQ(ierr);
-  ierr = PetscMalloc3(dim,&v0,dim*dim,&J,dim*dim,&invJ);CHKERRQ(ierr);
-  for (c = cStart; c < cEnd; ++c) {
-    ierr = DMPlexComputeCellGeometryFEM(dm, c, NULL, v0, J, invJ, &detJ);CHKERRQ(ierr);
-    if (detJ <= 0.0) SETERRQ2(PETSC_COMM_SELF, PETSC_ERR_ARG_OUTOFRANGE, "Invalid determinant %g for cell %D", (double)detJ, c);
-  }
-  ierr = PetscFree3(v0,J,invJ);CHKERRQ(ierr);
-  PetscFunctionReturn(0);
-}
-
 int main(int argc, char **argv)
 {
   DM             dm;
@@ -115,8 +79,6 @@ int main(int argc, char **argv)
   ierr = PetscInitialize(&argc, &argv, NULL,help);if (ierr) return ierr;
   ierr = ProcessOptions(PETSC_COMM_WORLD, &user);CHKERRQ(ierr);
   ierr = CreateMesh(PETSC_COMM_WORLD, &user, &dm);CHKERRQ(ierr);
-  ierr = CheckMeshTopology(dm);CHKERRQ(ierr);
-  ierr = CheckMeshGeometry(dm);CHKERRQ(ierr);
   ierr = DMDestroy(&dm);CHKERRQ(ierr);
   ierr = PetscFree(user.bcFuncs);CHKERRQ(ierr);
   ierr = PetscFinalize();
@@ -125,50 +87,52 @@ int main(int argc, char **argv)
 
 /*TEST
 
-  # CGNS meshes 0-1
-  test:
-    suffix: 0
-    requires: cgns
-    TODO: broken
-    args: -filename ${wPETSC_DIR}/share/petsc/datafiles/meshes/tut21.cgns -interpolate 1
-  test:
-    suffix: 1
-    requires: cgns
-    TODO: broken
-    args: -filename ${wPETSC_DIR}/share/petsc/datafiles/meshes/grid_c.cgns -interpolate 1
-  # Gmsh meshes 2-4
-  test:
-    suffix: 2
-    requires: double
-    args: -filename ${wPETSC_DIR}/share/petsc/datafiles/meshes/doublet-tet.msh -interpolate 1
-  test:
-    suffix: 3
-    requires: double
-    args: -filename ${wPETSC_DIR}/share/petsc/datafiles/meshes/square.msh -interpolate 1
-  test:
-    suffix: 4
-    requires: double
-    args: -filename ${wPETSC_DIR}/share/petsc/datafiles/meshes/square_bin.msh -interpolate 1
-  # Exodus meshes 5-9
-  test:
-    suffix: 5
-    requires: exodusii
-    args: -filename ${wPETSC_DIR}/share/petsc/datafiles/meshes/sevenside-quad.exo -interpolate 1
-  test:
-    suffix: 6
-    requires: exodusii
-    args: -filename ${wPETSC_DIR}/share/petsc/datafiles/meshes/sevenside-quad-15.exo -interpolate 1
-  test:
-    suffix: 7
-    requires: exodusii
-    args: -filename ${wPETSC_DIR}/share/petsc/datafiles/meshes/squaremotor-30.exo -interpolate 1
-  test:
-    suffix: 8
-    requires: exodusii
-    args: -filename ${wPETSC_DIR}/share/petsc/datafiles/meshes/blockcylinder-50.exo -interpolate 1
-  test:
-    suffix: 9
-    requires: exodusii
-    args: -filename ${wPETSC_DIR}/share/petsc/datafiles/meshes/simpleblock-100.exo -interpolate 1
+  testset:
+    args: -dm_plex_check_symmetry -dm_plex_check_skeleton -dm_plex_check_faces -dm_plex_check_geometry
+    # CGNS meshes 0-1
+    test:
+      suffix: 0
+      requires: cgns
+      TODO: broken
+      args: -filename ${wPETSC_DIR}/share/petsc/datafiles/meshes/tut21.cgns
+    test:
+      suffix: 1
+      requires: cgns
+      TODO: broken
+      args: -filename ${wPETSC_DIR}/share/petsc/datafiles/meshes/grid_c.cgns
+    # Gmsh meshes 2-4
+    test:
+      suffix: 2
+      requires: double
+      args: -filename ${wPETSC_DIR}/share/petsc/datafiles/meshes/doublet-tet.msh
+    test:
+      suffix: 3
+      requires: double
+      args: -filename ${wPETSC_DIR}/share/petsc/datafiles/meshes/square.msh
+    test:
+      suffix: 4
+      requires: double
+      args: -filename ${wPETSC_DIR}/share/petsc/datafiles/meshes/square_bin.msh
+    # Exodus meshes 5-9
+    test:
+      suffix: 5
+      requires: exodusii
+      args: -filename ${wPETSC_DIR}/share/petsc/datafiles/meshes/sevenside-quad.exo
+    test:
+      suffix: 6
+      requires: exodusii
+      args: -filename ${wPETSC_DIR}/share/petsc/datafiles/meshes/sevenside-quad-15.exo
+    test:
+      suffix: 7
+      requires: exodusii
+      args: -filename ${wPETSC_DIR}/share/petsc/datafiles/meshes/squaremotor-30.exo
+    test:
+      suffix: 8
+      requires: exodusii
+      args: -filename ${wPETSC_DIR}/share/petsc/datafiles/meshes/blockcylinder-50.exo
+    test:
+      suffix: 9
+      requires: exodusii
+     args: -filename ${wPETSC_DIR}/share/petsc/datafiles/meshes/simpleblock-100.exo
 
 TEST*/

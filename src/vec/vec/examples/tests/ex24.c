@@ -2,10 +2,6 @@
 static char help[] = "Scatters from a parallel vector to a sequential vector.\n\
 Tests where the local part of the scatter is a copy.\n\n";
 
-/*T
-   requires: x
-T*/
-
 #include <petscvec.h>
 
 int main(int argc,char **argv)
@@ -55,7 +51,7 @@ int main(int argc,char **argv)
   ierr = VecAssemblyEnd(x);CHKERRQ(ierr);
   ierr = VecView(x,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
 
-  ierr = VecScatterCreateWithData(x,is1,y,is2,&ctx);CHKERRQ(ierr);
+  ierr = VecScatterCreate(x,is1,y,is2,&ctx);CHKERRQ(ierr);
   ierr = VecScatterBegin(ctx,x,y,INSERT_VALUES,SCATTER_FORWARD);CHKERRQ(ierr);
   ierr = VecScatterEnd(ctx,x,y,INSERT_VALUES,SCATTER_FORWARD);CHKERRQ(ierr);
 

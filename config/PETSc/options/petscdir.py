@@ -45,14 +45,19 @@ The environmental variable PETSC_DIR is set incorrectly. Please use the followin
     versionHeader = os.path.join(self.dir, 'include', 'petscversion.h')
     versionInfo = []
     if os.path.exists(versionHeader):
-      f = file(versionHeader)
+      f = open(versionHeader)
       for line in f:
         if line.find('define PETSC_VERSION') >= 0:
           versionInfo.append(line[:-1])
       f.close()
     else:
       raise RuntimeError('Invalid PETSc directory '+str(self.dir)+'. Could not locate '+versionHeader)
-    self.version = '.'.join([line.split(' ')[-1] for line in versionInfo[1:4]])
+    self.versionRelease = True if versionInfo[0].split(' ')[-1] == '1' else False
+    if self.versionRelease:
+      self.version = '.'.join([line.split(' ')[-1] for line in versionInfo[1:4]])
+    else:
+      self.version = '.'.join([line.split(' ')[-1] for line in versionInfo[1:3]])
+      self.version += '.99'
     self.logPrint('Version Information:')
     for line in versionInfo:
       self.logPrint(line)

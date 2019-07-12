@@ -15,7 +15,7 @@
   Output Parameter:
 . dm  - The DM object representing the mesh
 
-  Note: http://www.salome-platform.org/user-section/about/med, http://docs.salome-platform.org/latest/MED_index.html
+  Note: https://www.salome-platform.org/user-section/about/med, http://docs.salome-platform.org/latest/MED_index.html
 
   Level: beginner
 
@@ -204,8 +204,8 @@ PetscErrorCode DMPlexCreateMedFromFile(MPI_Comm comm, const char filename[], Pet
       PetscSection       facetSection, facetSectionRendezvous;
       PetscSF            sfProcess, sfFacetMigration;
       const PetscSFNode *remoteVertices;
-      ierr = DMLabelCreate("Facet Rendezvous", &lblFacetRendezvous);CHKERRQ(ierr);
-      ierr = DMLabelCreate("Facet Migration", &lblFacetMigration);CHKERRQ(ierr);
+      ierr = DMLabelCreate(PETSC_COMM_SELF, "Facet Rendezvous", &lblFacetRendezvous);CHKERRQ(ierr);
+      ierr = DMLabelCreate(PETSC_COMM_SELF, "Facet Migration", &lblFacetMigration);CHKERRQ(ierr);
       ierr = PetscSFGetGraph(sfVertices, NULL, NULL, NULL, &remoteVertices);CHKERRQ(ierr);
       for (f = 0; f < numFacetsLocal; f++) {
         for (v = 0; v < numFacetCorners; v++) {
@@ -278,7 +278,7 @@ PetscErrorCode DMPlexCreateMedFromFile(MPI_Comm comm, const char filename[], Pet
             /* Flip facet connectivities and IDs to a vertex-wise layout */
             ierr = PetscSectionGetOffset(facetSectionVertices, vertex-vrange[rank], &offset);
             offset += vertexIdx[vertex-vrange[rank]] * numFacetCorners;
-            ierr = PetscMemcpy(&(vertexFacets[offset]), &(facetListRendezvous[f*numFacetCorners]), numFacetCorners*sizeof(PetscInt));CHKERRQ(ierr);
+            ierr = PetscArraycpy(&(vertexFacets[offset]), &(facetListRendezvous[f*numFacetCorners]), numFacetCorners);CHKERRQ(ierr);
             ierr = PetscSectionGetOffset(facetSectionIDs, vertex-vrange[rank], &offset);
             offset += vertexIdx[vertex-vrange[rank]];
             vertexFacetIDs[offset] = facetIDsRendezvous[f];

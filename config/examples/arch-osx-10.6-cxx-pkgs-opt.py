@@ -5,7 +5,7 @@
 configure_options = [
   '--with-cc=clang',
   '--with-cxx=clang++',
-  '--with-fc=gfortran', # http://brew.sh/
+  '--with-fc=gfortran', # https://brew.sh/
 
   'CXXFLAGS=-Wall -Wwrite-strings -Wno-strict-aliasing -Wno-unknown-pragmas -fstack-protector -Wno-deprecated',
   '--with-clanguage=cxx',
@@ -36,6 +36,9 @@ configure_options = [
   '--download-saws',
   '--download-revolve=1',
   '--download-ctetgen=1',
+  '--download-mfem=1',
+  '--download-glvis=1',
+  '--with-opengl=1',
   ]
 
 if __name__ == '__main__':

@@ -130,7 +130,7 @@ int main(int argc, char **argv)
   ierr = PetscRandomSetFromOptions(randCtx);CHKERRQ(ierr);
   ierr = PetscOptionsBegin(PETSC_COMM_WORLD,NULL,"ex21",NULL);CHKERRQ(ierr);
   ierr = PetscOptionsReal("-vertex_perturbation","scale of random vertex distortion",NULL,perturb,&perturb,NULL);CHKERRQ(ierr);
-  ierr = PetscOptionsInt("-num_test_points","number of points to test",NULL,numTests,&numTests,NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsBoundedInt("-num_test_points","number of points to test",NULL,numTests,&numTests,NULL,0);CHKERRQ(ierr);
   ierr = PetscOptionsEnd();CHKERRQ(ierr);
   for (dim = 1; dim <= 3; dim++) {
     for (dimC = dim; dimC <= PetscMin(3,dim + 1); dimC++) {
@@ -154,13 +154,15 @@ int main(int argc, char **argv)
             ierr = PetscFECreateDefault(PetscObjectComm((PetscObject) dm),dim,dim,isSimplex ? PETSC_TRUE : PETSC_FALSE,isSimplex ? NULL : "tensor_" ,PETSC_DEFAULT,&fe);CHKERRQ(ierr);
             ierr = PetscFEGetBasisSpace(fe,&sp);CHKERRQ(ierr);
             ierr = PetscSpaceGetDegree(sp,&order,NULL);CHKERRQ(ierr);
-            ierr = DMSetField(dm,0,(PetscObject)fe);CHKERRQ(ierr);
+            ierr = DMSetField(dm,0,NULL,(PetscObject)fe);CHKERRQ(ierr);
+            ierr = DMCreateDS(dm);CHKERRQ(ierr);
             ierr = DMCreateLocalVector(dm,&localCoords);CHKERRQ(ierr);
             ierr = VecSetDM(localCoords,NULL);CHKERRQ(ierr);
             ierr = DMProjectFunctionLocal(dm,0,funcs,ctxs,INSERT_VALUES,localCoords);CHKERRQ(ierr);
             ierr = DMClone(dm,&dmCoord);CHKERRQ(ierr);
-            ierr = DMSetField(dmCoord,0,(PetscObject)fe);CHKERRQ(ierr);
+            ierr = DMSetField(dmCoord,0,NULL,(PetscObject)fe);CHKERRQ(ierr);
             ierr = PetscFEDestroy(&fe);CHKERRQ(ierr);
+            ierr = DMCreateDS(dmCoord);CHKERRQ(ierr);
             ierr = DMSetCoordinateDM(dm,dmCoord);CHKERRQ(ierr);
             ierr = DMDestroy(&dmCoord);CHKERRQ(ierr);
             ierr = DMSetCoordinatesLocal(dm,localCoords);CHKERRQ(ierr);
@@ -217,8 +219,9 @@ int main(int argc, char **argv)
               PetscFE fe;
 
               ierr = PetscFECreateDefault(PetscObjectComm((PetscObject) dm),dim,dimC,isSimplex ? PETSC_TRUE : PETSC_FALSE,isSimplex ? NULL : "tensor_",PETSC_DEFAULT,&fe);CHKERRQ(ierr);
-              ierr = DMSetField(coordDM,0,(PetscObject)fe);CHKERRQ(ierr);
+              ierr = DMSetField(coordDM,0,NULL,(PetscObject)fe);CHKERRQ(ierr);
               ierr = PetscFEDestroy(&fe);CHKERRQ(ierr);
+              ierr = DMCreateDS(coordDM);CHKERRQ(ierr);
             }
             ierr = DMSetCoordinateDim(coordDM,dimC);CHKERRQ(ierr);
             ierr = VecGetLocalSize(coords,&n);CHKERRQ(ierr);

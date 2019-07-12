@@ -1,10 +1,6 @@
 
 static char help[] = "Demonstrates scattering with the indices specified by a process that is not sender or receiver.\n\n";
 
-/*T
-   TODO: Need to determine if deprecated
-T*/
-
 #include <petscvec.h>
 
 int main(int argc,char **argv)
@@ -45,7 +41,7 @@ int main(int argc,char **argv)
   ierr = VecView(x,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
   ierr = PetscPrintf(PETSC_COMM_WORLD,"----\n");CHKERRQ(ierr);
 
-  ierr = VecScatterCreateWithData(x,is1,y,is2,&ctx);CHKERRQ(ierr);
+  ierr = VecScatterCreate(x,is1,y,is2,&ctx);CHKERRQ(ierr);
   ierr = VecScatterBegin(ctx,x,y,INSERT_VALUES,SCATTER_FORWARD);CHKERRQ(ierr);
   ierr = VecScatterEnd(ctx,x,y,INSERT_VALUES,SCATTER_FORWARD);CHKERRQ(ierr);
   ierr = VecScatterDestroy(&ctx);CHKERRQ(ierr);

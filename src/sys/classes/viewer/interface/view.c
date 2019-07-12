@@ -10,7 +10,6 @@ static PetscBool PetscViewerPackageInitialized = PETSC_FALSE;
 
   Level: developer
 
-.keywords: Petsc, destroy, package, mathematica
 .seealso: PetscFinalize()
 @*/
 PetscErrorCode  PetscViewerFinalizePackage(void)
@@ -54,7 +53,6 @@ PetscErrorCode  PetscViewerFinalizePackage(void)
 
   Level: developer
 
-.keywords: Petsc, initialize, package
 .seealso: PetscInitialize()
 @*/
 PetscErrorCode  PetscViewerInitializePackage(void)
@@ -232,8 +230,6 @@ PetscErrorCode  PetscViewerGetType(PetscViewer viewer,PetscViewerType *type)
 
    Level: advanced
 
-.keywords: PetscViewer, set, options, prefix, database
-
 .seealso: PetscViewerSetFromOptions()
 @*/
 PetscErrorCode  PetscViewerSetOptionsPrefix(PetscViewer viewer,const char prefix[])
@@ -261,8 +257,6 @@ PetscErrorCode  PetscViewerSetOptionsPrefix(PetscViewer viewer,const char prefix
    The first character of all runtime options is AUTOMATICALLY the hyphen.
 
    Level: advanced
-
-.keywords: PetscViewer, append, options, prefix, database
 
 .seealso: PetscViewerGetOptionsPrefix()
 @*/
@@ -294,8 +288,6 @@ PetscErrorCode  PetscViewerAppendOptionsPrefix(PetscViewer viewer,const char pre
 
    Level: advanced
 
-.keywords: PetscViewer, get, options, prefix, database
-
 .seealso: PetscViewerAppendOptionsPrefix()
 @*/
 PetscErrorCode  PetscViewerGetOptionsPrefix(PetscViewer viewer,const char *prefix[])
@@ -322,8 +314,6 @@ PetscErrorCode  PetscViewerGetOptionsPrefix(PetscViewer viewer,const char *prefi
 
    Level: advanced
 
-.keywords: PetscViewer, setup
-
 .seealso: PetscViewerCreate(), PetscViewerDestroy()
 @*/
 PetscErrorCode  PetscViewerSetUp(PetscViewer viewer)
@@ -346,7 +336,7 @@ PetscErrorCode  PetscViewerSetUp(PetscViewer viewer)
    Collective on PetscViewer
 
    Input Parameters:
-+  v - the viewer
++  v - the viewer to be viewed
 -  viewer - visualization context
 
   Notes:
@@ -414,7 +404,7 @@ PetscErrorCode  PetscViewerView(PetscViewer v,PetscViewer viewer)
 /*@C
    PetscViewerRead - Reads data from a PetscViewer
 
-   Collective on MPI_Comm
+   Collective
 
    Input Parameters:
 +  viewer   - The viewer
@@ -430,8 +420,6 @@ PetscErrorCode  PetscViewerView(PetscViewer v,PetscViewer viewer)
    until a maximum of (-num - 1) chars.
 
    Level: beginner
-
-   Concepts: binary files, ascii files
 
 .seealso: PetscViewerASCIIOpen(), PetscViewerPushFormat(), PetscViewerDestroy(),
           VecView(), MatView(), VecLoad(), MatLoad(), PetscViewerBinaryGetDescriptor(),
@@ -449,18 +437,18 @@ PetscErrorCode  PetscViewerRead(PetscViewer viewer, void *data, PetscInt num, Pe
     if (num >= 0) {
       for (c = 0; c < num; c++) {
         /* Skip leading whitespaces */
-        do {ierr = (*viewer->ops->read)(viewer, &(s[i]), 1, &cnt, PETSC_CHAR);CHKERRQ(ierr); if (count && !cnt) break;}
+        do {ierr = (*viewer->ops->read)(viewer, &(s[i]), 1, &cnt, PETSC_CHAR);CHKERRQ(ierr); if (!cnt) break;}
         while (s[i]=='\n' || s[i]=='\t' || s[i]==' ' || s[i]=='\0' || s[i]=='\v' || s[i]=='\f' || s[i]=='\r');
         i++;
         /* Read strings one char at a time */
-        do {ierr = (*viewer->ops->read)(viewer, &(s[i++]), 1, &cnt, PETSC_CHAR);CHKERRQ(ierr); if (count && !cnt) break;}
+        do {ierr = (*viewer->ops->read)(viewer, &(s[i++]), 1, &cnt, PETSC_CHAR);CHKERRQ(ierr); if (!cnt) break;}
         while (s[i-1]!='\n' && s[i-1]!='\t' && s[i-1]!=' ' && s[i-1]!='\0' && s[i-1]!='\v' && s[i-1]!='\f' && s[i-1]!='\r');
         /* Terminate final string */
         if (c == num-1) s[i-1] = '\0';
       }
     } else {
       /* Read until a \n is encountered (-num is the max size allowed) */
-      do {ierr = (*viewer->ops->read)(viewer, &(s[i++]), 1, &cnt, PETSC_CHAR);CHKERRQ(ierr); if (i == -num && !cnt) break;}
+      do {ierr = (*viewer->ops->read)(viewer, &(s[i++]), 1, &cnt, PETSC_CHAR);CHKERRQ(ierr); if (i == -num || !cnt) break;}
       while (s[i-1]!='\n');
       /* Terminate final string */
       s[i-1] = '\0';
@@ -471,5 +459,132 @@ PetscErrorCode  PetscViewerRead(PetscViewer viewer, void *data, PetscInt num, Pe
   } else {
     ierr = (*viewer->ops->read)(viewer, data, num, count, dtype);CHKERRQ(ierr);
   }
+  PetscFunctionReturn(0);
+}
+
+/*@
+   PetscViewerReadable - Return a flag whether the viewer can be read from
+
+   Not Collective
+
+   Input Parameters:
+.  viewer - the PetscViewer context
+
+   Output Parameters:
+.  flg - PETSC_TRUE if the viewer is readable, PETSC_FALSE otherwise
+
+   Notes:
+   PETSC_TRUE means that viewer's PetscViewerType supports reading (this holds e.g. for PETSCVIEWERBINARY)
+   and viewer is in a mode allowing reading, i.e. PetscViewerFileGetMode()
+   returns one of FILE_MODE_READ, FILE_MODE_UPDATE, FILE_MODE_APPEND_UPDATE.
+
+   Level: intermediate
+
+.seealso: PetscViewerWritable(), PetscViewerCheckReadable(), PetscViewerCreate(), PetscViewerFileSetMode(), PetscViewerFileSetType()
+@*/
+PetscErrorCode  PetscViewerReadable(PetscViewer viewer, PetscBool *flg)
+{
+  PetscErrorCode    ierr;
+  PetscFileMode     mode;
+  PetscErrorCode    (*f)(PetscViewer,PetscFileMode*) = NULL;
+
+  PetscFunctionBegin;
+  PetscValidHeaderSpecific(viewer,PETSC_VIEWER_CLASSID,1);
+  PetscValidIntPointer(flg,2);
+  ierr = PetscObjectQueryFunction((PetscObject)viewer, "PetscViewerFileGetMode_C", &f);CHKERRQ(ierr);
+  *flg = PETSC_FALSE;
+  if (!f) PetscFunctionReturn(0);
+  ierr = (*f)(viewer, &mode);CHKERRQ(ierr);
+  switch (mode) {
+    case FILE_MODE_READ:
+    case FILE_MODE_UPDATE:
+    case FILE_MODE_APPEND_UPDATE:
+      *flg = PETSC_TRUE;
+    default: break;
+  }
+  PetscFunctionReturn(0);
+}
+
+/*@
+   PetscViewerWritable - Return a flag whether the viewer can be written to
+
+   Not Collective
+
+   Input Parameters:
+.  viewer - the PetscViewer context
+
+   Output Parameters:
+.  flg - PETSC_TRUE if the viewer is writable, PETSC_FALSE otherwise
+
+   Notes:
+   PETSC_TRUE means viewer is in a mode allowing writing, i.e. PetscViewerFileGetMode()
+   returns one of FILE_MODE_WRITE, FILE_MODE_APPEND, FILE_MODE_UPDATE, FILE_MODE_APPEND_UPDATE.
+
+   Level: intermediate
+
+.seealso: PetscViewerReadable(), PetscViewerCheckWritable(), PetscViewerCreate(), PetscViewerFileSetMode(), PetscViewerFileSetType()
+@*/
+PetscErrorCode  PetscViewerWritable(PetscViewer viewer, PetscBool *flg)
+{
+  PetscErrorCode    ierr;
+  PetscFileMode     mode;
+  PetscErrorCode    (*f)(PetscViewer,PetscFileMode*) = NULL;
+
+  PetscFunctionBegin;
+  PetscValidHeaderSpecific(viewer,PETSC_VIEWER_CLASSID,1);
+  PetscValidIntPointer(flg,2);
+  ierr = PetscObjectQueryFunction((PetscObject)viewer, "PetscViewerFileGetMode_C", &f);CHKERRQ(ierr);
+  *flg = PETSC_TRUE;
+  if (!f) PetscFunctionReturn(0);
+  ierr = (*f)(viewer, &mode);CHKERRQ(ierr);
+  if (mode == FILE_MODE_READ) *flg = PETSC_FALSE;
+  PetscFunctionReturn(0);
+}
+
+/*@
+   PetscViewerCheckReadable - Check whether the viewer can be read from
+
+   Collective
+
+   Input Parameters:
+.  viewer - the PetscViewer context
+
+   Level: intermediate
+
+.seealso: PetscViewerReadable(), PetscViewerCheckWritable(), PetscViewerCreate(), PetscViewerFileSetMode(), PetscViewerFileSetType()
+@*/
+PetscErrorCode  PetscViewerCheckReadable(PetscViewer viewer)
+{
+  PetscBool         flg;
+  PetscErrorCode    ierr;
+
+  PetscFunctionBegin;
+  PetscValidHeaderSpecific(viewer,PETSC_VIEWER_CLASSID,1);
+  ierr = PetscViewerReadable(viewer, &flg);CHKERRQ(ierr);
+  if (!flg) SETERRQ(PetscObjectComm((PetscObject)viewer), PETSC_ERR_SUP, "Viewer doesn't support reading, or is not in reading mode (FILE_MODE_READ, FILE_MODE_UPDATE, FILE_MODE_APPEND_UPDATE)");
+  PetscFunctionReturn(0);
+}
+
+/*@
+   PetscViewerCheckWritable - Check whether the viewer can be written to
+
+   Collective
+
+   Input Parameters:
+.  viewer - the PetscViewer context
+
+   Level: intermediate
+
+.seealso: PetscViewerWritable(), PetscViewerCheckReadable(), PetscViewerCreate(), PetscViewerFileSetMode(), PetscViewerFileSetType()
+@*/
+PetscErrorCode  PetscViewerCheckWritable(PetscViewer viewer)
+{
+  PetscBool         flg;
+  PetscErrorCode    ierr;
+
+  PetscFunctionBegin;
+  PetscValidHeaderSpecific(viewer,PETSC_VIEWER_CLASSID,1);
+  ierr = PetscViewerWritable(viewer, &flg);CHKERRQ(ierr);
+  if (!flg) SETERRQ(PetscObjectComm((PetscObject)viewer), PETSC_ERR_SUP, "Viewer doesn't support writing, or is in FILE_MODE_READ mode");
   PetscFunctionReturn(0);
 }

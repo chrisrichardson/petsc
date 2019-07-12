@@ -402,28 +402,15 @@ PetscErrorCode MatMultTranspose_MPISELL(Mat A,Vec xx,Vec yy)
 {
   Mat_MPISELL    *a=(Mat_MPISELL*)A->data;
   PetscErrorCode ierr;
-  PetscBool      merged;
 
   PetscFunctionBegin;
-  ierr = VecScatterGetMerged(a->Mvctx,&merged);CHKERRQ(ierr);
   /* do nondiagonal part */
   ierr = (*a->B->ops->multtranspose)(a->B,xx,a->lvec);CHKERRQ(ierr);
-  if (!merged) {
-    /* send it on its way */
-    ierr = VecScatterBegin(a->Mvctx,a->lvec,yy,ADD_VALUES,SCATTER_REVERSE);CHKERRQ(ierr);
-    /* do local part */
-    ierr = (*a->A->ops->multtranspose)(a->A,xx,yy);CHKERRQ(ierr);
-    /* receive remote parts: note this assumes the values are not actually */
-    /* added in yy until the next line, */
-    ierr = VecScatterEnd(a->Mvctx,a->lvec,yy,ADD_VALUES,SCATTER_REVERSE);CHKERRQ(ierr);
-  } else {
-    /* do local part */
-    ierr = (*a->A->ops->multtranspose)(a->A,xx,yy);CHKERRQ(ierr);
-    /* send it on its way */
-    ierr = VecScatterBegin(a->Mvctx,a->lvec,yy,ADD_VALUES,SCATTER_REVERSE);CHKERRQ(ierr);
-    /* values actually were received in the Begin() but we need to call this nop */
-    ierr = VecScatterEnd(a->Mvctx,a->lvec,yy,ADD_VALUES,SCATTER_REVERSE);CHKERRQ(ierr);
-  }
+  /* do local part */
+  ierr = (*a->A->ops->multtranspose)(a->A,xx,yy);CHKERRQ(ierr);
+  /* add partial results together */
+  ierr = VecScatterBegin(a->Mvctx,a->lvec,yy,ADD_VALUES,SCATTER_REVERSE);CHKERRQ(ierr);
+  ierr = VecScatterEnd(a->Mvctx,a->lvec,yy,ADD_VALUES,SCATTER_REVERSE);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
@@ -475,11 +462,10 @@ PetscErrorCode MatMultTransposeAdd_MPISELL(Mat A,Vec xx,Vec yy,Vec zz)
   PetscFunctionBegin;
   /* do nondiagonal part */
   ierr = (*a->B->ops->multtranspose)(a->B,xx,a->lvec);CHKERRQ(ierr);
-  /* send it on its way */
-  ierr = VecScatterBegin(a->Mvctx,a->lvec,zz,ADD_VALUES,SCATTER_REVERSE);CHKERRQ(ierr);
   /* do local part */
   ierr = (*a->A->ops->multtransposeadd)(a->A,xx,yy,zz);CHKERRQ(ierr);
-  /* receive remote parts */
+  /* add partial results together */
+  ierr = VecScatterBegin(a->Mvctx,a->lvec,zz,ADD_VALUES,SCATTER_REVERSE);CHKERRQ(ierr);
   ierr = VecScatterEnd(a->Mvctx,a->lvec,zz,ADD_VALUES,SCATTER_REVERSE);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
@@ -782,6 +768,7 @@ PetscErrorCode MatSetOption_MPISELL(Mat A,MatOption op,PetscBool flg)
     ierr = MatSetOption(a->B,op,flg);CHKERRQ(ierr);
     break;
   case MAT_NEW_DIAGONALS:
+  case MAT_SORTED_FULL:
     ierr = PetscInfo1(A,"Option %s ignored\n",MatOptions[op]);CHKERRQ(ierr);
     break;
   case MAT_IGNORE_OFF_PROC_ENTRIES:
@@ -1248,7 +1235,6 @@ PetscErrorCode MatDuplicate_MPISELL(Mat matin,MatDuplicateOption cpvalues,Mat *n
   ierr    = MatSetSizes(mat,matin->rmap->n,matin->cmap->n,matin->rmap->N,matin->cmap->N);CHKERRQ(ierr);
   ierr    = MatSetBlockSizesFromMats(mat,matin,matin);CHKERRQ(ierr);
   ierr    = MatSetType(mat,((PetscObject)matin)->type_name);CHKERRQ(ierr);
-  ierr    = PetscMemcpy(mat->ops,matin->ops,sizeof(struct _MatOps));CHKERRQ(ierr);
   a       = (Mat_MPISELL*)mat->data;
 
   mat->factortype   = matin->factortype;
@@ -1273,7 +1259,7 @@ PetscErrorCode MatDuplicate_MPISELL(Mat matin,MatDuplicateOption cpvalues,Mat *n
 #else
     ierr = PetscMalloc1(mat->cmap->N,&a->colmap);CHKERRQ(ierr);
     ierr = PetscLogObjectMemory((PetscObject)mat,(mat->cmap->N)*sizeof(PetscInt));CHKERRQ(ierr);
-    ierr = PetscMemcpy(a->colmap,oldmat->colmap,(mat->cmap->N)*sizeof(PetscInt));CHKERRQ(ierr);
+    ierr = PetscArraycpy(a->colmap,oldmat->colmap,mat->cmap->N);CHKERRQ(ierr);
 #endif
   } else a->colmap = 0;
   if (oldmat->garray) {
@@ -1281,7 +1267,7 @@ PetscErrorCode MatDuplicate_MPISELL(Mat matin,MatDuplicateOption cpvalues,Mat *n
     len  = oldmat->B->cmap->n;
     ierr = PetscMalloc1(len+1,&a->garray);CHKERRQ(ierr);
     ierr = PetscLogObjectMemory((PetscObject)mat,len*sizeof(PetscInt));CHKERRQ(ierr);
-    if (len) { ierr = PetscMemcpy(a->garray,oldmat->garray,len*sizeof(PetscInt));CHKERRQ(ierr); }
+    if (len) { ierr = PetscArraycpy(a->garray,oldmat->garray,len);CHKERRQ(ierr); }
   } else a->garray = 0;
 
   ierr    = VecDuplicate(oldmat->lvec,&a->lvec);CHKERRQ(ierr);
@@ -1302,7 +1288,7 @@ PetscErrorCode MatDuplicate_MPISELL(Mat matin,MatDuplicateOption cpvalues,Mat *n
    For good matrix assembly performance the user should preallocate the matrix storage by
    setting the parameters d_nz (or d_nnz) and o_nz (or o_nnz).
 
-   Collective on MPI_Comm
+   Collective
 
    Input Parameters:
 +  B - the matrix
@@ -1418,8 +1404,6 @@ PetscErrorCode MatDuplicate_MPISELL(Mat matin,MatDuplicateOption cpvalues,Mat *n
 
    Level: intermediate
 
-.keywords: matrix, sell, sparse, parallel
-
 .seealso: MatCreate(), MatCreateSeqSELL(), MatSetValues(), MatCreatesell(),
           MATMPISELL, MatGetInfo(), PetscSplitOwnership()
 @*/
@@ -1437,7 +1421,7 @@ PetscErrorCode MatMPISELLSetPreallocation(Mat B,PetscInt d_nz,const PetscInt d_n
 /*@C
    MatCreateSELL - Creates a sparse parallel matrix in SELL format.
 
-   Collective on MPI_Comm
+   Collective
 
    Input Parameters:
 +  comm - MPI communicator
@@ -1467,7 +1451,7 @@ PetscErrorCode MatMPISELLSetPreallocation(Mat B,PetscInt d_nz,const PetscInt d_n
 .  A - the matrix
 
    It is recommended that one use the MatCreate(), MatSetType() and/or MatSetFromOptions(),
-   MatXXXXSetPreallocation() paradgm instead of this routine directly.
+   MatXXXXSetPreallocation() paradigm instead of this routine directly.
    [MatXXXXSetPreallocation() is, for example, MatSeqSELLSetPreallocation]
 
    Notes:
@@ -1590,8 +1574,6 @@ PetscErrorCode MatMPISELLSetPreallocation(Mat B,PetscInt d_nz,const PetscInt d_n
    the allocation is always done according to rlenmax.
 
    Level: intermediate
-
-.keywords: matrix, sell, sparse, parallel
 
 .seealso: MatCreate(), MatCreateSeqSELL(), MatSetValues(), MatMPISELLSetPreallocation(), MatMPISELLSetPreallocationSELL(),
           MATMPISELL, MatCreateMPISELLWithArrays()

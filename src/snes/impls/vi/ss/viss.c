@@ -287,6 +287,7 @@ PetscErrorCode SNESSolve_VINEWTONSSLS(SNES snes)
     /* Get the jacobian -- note that the function must be the original function for snes_fd and snes_fd_color to work for this*/
     sdm->ops->computefunction = vi->computeuserfunction;
     ierr                      = SNESComputeJacobian(snes,X,snes->jacobian,snes->jacobian_pre);CHKERRQ(ierr);
+    SNESCheckJacobianDomainerror(snes);
     sdm->ops->computefunction = SNESVIComputeFunction;
 
     /* Get the diagonal shift and row scaling vectors */
@@ -351,6 +352,8 @@ PetscErrorCode SNESSolve_VINEWTONSSLS(SNES snes)
     ierr       = PetscObjectSAWsTakeAccess((PetscObject)snes);CHKERRQ(ierr);
     snes->iter = i+1;
     snes->norm = vi->phinorm;
+    snes->xnorm = xnorm;
+    snes->ynorm = ynorm;
     ierr       = PetscObjectSAWsGrantAccess((PetscObject)snes);CHKERRQ(ierr);
     ierr       = SNESLogConvergenceHistory(snes,snes->norm,lits);CHKERRQ(ierr);
     ierr       = SNESMonitor(snes,snes->iter,snes->norm);CHKERRQ(ierr);
@@ -426,18 +429,11 @@ PetscErrorCode SNESReset_VINEWTONSSLS(SNES snes)
 static PetscErrorCode SNESSetFromOptions_VINEWTONSSLS(PetscOptionItems *PetscOptionsObject,SNES snes)
 {
   PetscErrorCode ierr;
-  SNESLineSearch linesearch;
 
   PetscFunctionBegin;
   ierr = SNESSetFromOptions_VI(PetscOptionsObject,snes);CHKERRQ(ierr);
   ierr = PetscOptionsHead(PetscOptionsObject,"SNES semismooth method options");CHKERRQ(ierr);
   ierr = PetscOptionsTail();CHKERRQ(ierr);
-  /* set up the default line search */
-  if (!snes->linesearch) {
-    ierr = SNESGetLineSearch(snes, &linesearch);CHKERRQ(ierr);
-    ierr = SNESLineSearchSetType(linesearch, SNESLINESEARCHBT);CHKERRQ(ierr);
-    ierr = SNESLineSearchBTSetAlpha(linesearch, 0.0);CHKERRQ(ierr);
-  }
   PetscFunctionReturn(0);
 }
 
@@ -465,6 +461,7 @@ PETSC_EXTERN PetscErrorCode SNESCreate_VINEWTONSSLS(SNES snes)
 {
   PetscErrorCode    ierr;
   SNES_VINEWTONSSLS *vi;
+  SNESLineSearch    linesearch;
 
   PetscFunctionBegin;
   snes->ops->reset          = SNESReset_VINEWTONSSLS;
@@ -476,6 +473,10 @@ PETSC_EXTERN PetscErrorCode SNESCreate_VINEWTONSSLS(SNES snes)
 
   snes->usesksp = PETSC_TRUE;
   snes->usesnpc = PETSC_FALSE;
+
+  ierr = SNESGetLineSearch(snes, &linesearch);CHKERRQ(ierr);
+  ierr = SNESLineSearchSetType(linesearch, SNESLINESEARCHBT);CHKERRQ(ierr);
+  ierr = SNESLineSearchBTSetAlpha(linesearch, 0.0);CHKERRQ(ierr);
 
   snes->alwayscomputesfinalresidual = PETSC_FALSE;
 

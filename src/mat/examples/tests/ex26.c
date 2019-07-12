@@ -12,8 +12,8 @@ PetscErrorCode DumpCSR(Mat A,PetscInt shift,PetscBool symmetric,PetscBool compre
   PetscErrorCode ierr;
 
   PetscFunctionBeginUser;
-  ierr = PetscObjectTypeCompare((PetscObject)A,MATSEQBAIJ,&isseqbaij);CHKERRQ(ierr);
-  ierr = PetscObjectTypeCompare((PetscObject)A,MATSEQSBAIJ,&isseqsbaij);CHKERRQ(ierr);
+  ierr = PetscObjectBaseTypeCompare((PetscObject)A,MATSEQBAIJ,&isseqbaij);CHKERRQ(ierr);
+  ierr = PetscObjectBaseTypeCompare((PetscObject)A,MATSEQSBAIJ,&isseqsbaij);CHKERRQ(ierr);
   if (isseqbaij || isseqsbaij) {
     ierr = MatGetBlockSize(A,&bs);CHKERRQ(ierr);
   }
@@ -39,7 +39,7 @@ int main(int argc,char **args)
   PetscErrorCode ierr;
   PetscMPIInt    size;
 
-  ierr = PetscInitialize(&argc,&args,(char*)0,help);CHKERRQ(ierr);
+  ierr = PetscInitialize(&argc,&args,(char*)0,help);if (ierr) return ierr;
   ierr = MPI_Comm_size(PETSC_COMM_WORLD,&size);CHKERRQ(ierr);
   if (size != 1) SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"This is a uniprocessor example only!");
   ierr = PetscOptionsGetInt(NULL,NULL,"-m",&m,NULL);CHKERRQ(ierr);

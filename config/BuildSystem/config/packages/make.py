@@ -4,17 +4,19 @@ import os
 class Configure(config.package.GNUPackage):
   def __init__(self, framework):
     config.package.GNUPackage.__init__(self, framework)
+    self.minversion        = '3.81'
     self.download          = ['http://ftp.mcs.anl.gov/pub/petsc/externalpackages/make-4.2.1-6.fc28.tar.gz']
     self.complex           = 1
     self.downloadonWindows = 1
     self.useddirectly      = 0
-    self.linkedbypetsc     = 0 
+    self.linkedbypetsc     = 0
     self.printdirflag      = ''
     self.noprintdirflag    = ''
     self.paroutflg         = ''
     self.haveGNUMake       = 0
     self.publicInstall     = 0  # always install in PETSC_DIR/PETSC_ARCH (not --prefix) since this is not used by users
     self.parallelMake      = 0  # sowing does not support make -j np
+    self.executablename    = 'make'
     return
 
   def setupHelp(self, help):
@@ -44,7 +46,7 @@ class Configure(config.package.GNUPackage):
     args = self.formGNUConfigureArgs()
     args = ' '.join(args)
     conffile = os.path.join(self.packageDir,self.package+'.petscconf')
-    fd = file(conffile, 'w')
+    fd = open(conffile, 'w')
     fd.write(args)
     fd.close()
     ### Use conffile to check whether a reconfigure/rebuild is required
@@ -79,7 +81,7 @@ class Configure(config.package.GNUPackage):
 *** Please rerun cygwin-setup and select module "make" for install.**************''')
     yield 'gmake'
     yield 'make'
-    raise RuntimeError('Could not locate the GNU make utility (version greater than 3.80) on your system, specify with --with-make-exec=gmake or try --download-make')
+    raise RuntimeError('Could not locate the GNU make utility (version greater than or equal to '+self.minversion+') on your system, specify with --with-make-exec=gmake or try --download-make')
     return
 
   def configureMake(self):
@@ -90,7 +92,7 @@ class Configure(config.package.GNUPackage):
         self.getExecutable(gmake,getFullPath = 1,resultName = 'make')
         self.found = 1
         return
-    raise RuntimeError('Could not locate the GNU make utility (version greater than 3.80) on your system, specify with --with-make-exec=gmake or try --download-make')
+    raise RuntimeError('Could not locate the GNU make utility (version greater than or equal to '+self.minversion+') on your system, specify with --with-make-exec=gmake or try --download-make')
 
   def checkGNUMake(self,make):
     '''Check for GNU make'''
@@ -98,14 +100,15 @@ class Configure(config.package.GNUPackage):
     haveGNUMake4 = 0
     try:
       import re
-      # accept gnumake version > 3.80 only [as older version break with gmakefile]
+      # accept gnumake version >= self.minversion only [as older version break with gmakefile]
       (output, error, status) = config.base.Configure.executeShellCommand(make+' --version', log = self.log)
       gver = re.compile('GNU Make ([0-9]+).([0-9]+)').match(output)
       if not status and gver:
         major = int(gver.group(1))
         minor = int(gver.group(2))
-        if ((major > 3) or (major == 3 and minor > 80)): haveGNUMake = 1
+        if (major,minor) >= self.versionToTuple(self.minversion): haveGNUMake = 1
         if (major > 3): haveGNUMake4 = 1
+        self.foundversion = ".".join([str(major),str(minor)])
     except RuntimeError as e:
       self.log.write('GNUMake check failed: '+str(e)+'\n')
     return haveGNUMake, haveGNUMake4
@@ -118,7 +121,6 @@ class Configure(config.package.GNUPackage):
     # Setup make flags
     self.printdirflag = ' --print-directory'
     self.noprintdirflag = ' --no-print-directory'
-    self.addMakeMacro('MAKE_IS_GNUMAKE',1)
     # Use rules which look inside archives
     self.addMakeRule('libc','${LIBNAME}(${OBJSC})')
     self.addMakeRule('libcxx','${LIBNAME}(${OBJSCXX})')

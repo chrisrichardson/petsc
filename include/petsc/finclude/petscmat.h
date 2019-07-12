@@ -2,8 +2,8 @@
 !
 !  Include file for Fortran use of the Mat package in PETSc
 !
-#if !defined (__PETSCMATDEF_H)
-#define __PETSCMATDEF_H
+#if !defined (PETSCMATDEF_H)
+#define PETSCMATDEF_H
 
 #include "petsc/finclude/petscvec.h"
 
@@ -41,6 +41,7 @@
 #define MatPartitioningType character*(80)
 #define MatCoarsenType character*(80)
 #define MatCompositeType PetscEnum
+#define MatCompositeMergeType PetscEnum
 #define MatStencil PetscInt
 #define MatStencil_k 1
 #define MatStencil_j 2

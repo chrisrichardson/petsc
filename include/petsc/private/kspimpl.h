@@ -120,9 +120,9 @@ struct _p_KSP {
   void       *data;                      /* holder for misc stuff associated
                                    with a particular iterative solver */
 
-  PetscBool         view,   viewPre,   viewReason,   viewMat,   viewPMat,   viewRhs,   viewSol,   viewMatExp,   viewEV,   viewSV,   viewEVExp,   viewFinalRes,   viewPOpExp;
-  PetscViewer       viewer, viewerPre, viewerReason, viewerMat, viewerPMat, viewerRhs, viewerSol, viewerMatExp, viewerEV, viewerSV, viewerEVExp, viewerFinalRes, viewerPOpExp;
-  PetscViewerFormat format, formatPre, formatReason, formatMat, formatPMat, formatRhs, formatSol, formatMatExp, formatEV, formatSV, formatEVExp, formatFinalRes, formatPOpExp;
+  PetscBool         view,   viewPre,   viewReason,   viewMat,   viewPMat,   viewRhs,   viewSol,   viewMatExp,   viewEV,   viewSV,   viewEVExp,   viewFinalRes,   viewPOpExp,   viewDScale;
+  PetscViewer       viewer, viewerPre, viewerReason, viewerMat, viewerPMat, viewerRhs, viewerSol, viewerMatExp, viewerEV, viewerSV, viewerEVExp, viewerFinalRes, viewerPOpExp, viewerDScale;
+  PetscViewerFormat format, formatPre, formatReason, formatMat, formatPMat, formatRhs, formatSol, formatMatExp, formatEV, formatSV, formatEVExp, formatFinalRes, formatPOpExp, formatDScale;
 
   /* ----------------Default work-area management -------------------- */
   PetscInt       nwork;
@@ -342,50 +342,82 @@ PETSC_EXTERN PetscLogEvent KSP_Solve_FS_U;
 PETSC_INTERN PetscErrorCode MatGetSchurComplement_Basic(Mat,IS,IS,IS,IS,MatReuse,Mat*,MatSchurComplementAinvType,MatReuse,Mat*);
 PETSC_INTERN PetscErrorCode PCPreSolveChangeRHS(PC,PetscBool*);
 
-/*
-    Either generate an error or mark as diverged when a scalar from an inner product is Nan or Inf
-*/
-#define KSPCheckDot(ksp,beta)           \
+/*MC
+   KSPCheckDot - Checks if the result of a dot product used by the corresponding KSP contains Inf or NaN. These indicate that the previous 
+      application of the preconditioner generated an error
+
+   Collective on ksp
+
+   Input Parameter:
+.  ksp - the linear solver (KSP) context.
+
+   Output Parameter:
+.  beta - the result of the inner product
+
+   Level: developer
+
+   Developer Note:
+   this is used to manage returning from KSP solvers whose preconditioners have failed in some way
+
+.seealso: KSPCreate(), KSPSetType(), KSP, KSPCheckNorm(), KSPCheckSolve()
+M*/
+#define KSPCheckDot(ksp,beta) do { \
   if (PetscIsInfOrNanScalar(beta)) { \
     if (ksp->errorifnotconverged) SETERRQ(PetscObjectComm((PetscObject)ksp),PETSC_ERR_NOT_CONVERGED,"KSPSolve has not converged due to Nan or Inf inner product");\
     else {\
       PetscErrorCode ierr;\
       PCFailedReason pcreason;\
       PetscInt       sendbuf,pcreason_max; \
-      ierr = PCGetSetUpFailedReason(ksp->pc,&pcreason);CHKERRQ(ierr);\
+      ierr = PCGetFailedReason(ksp->pc,&pcreason);CHKERRQ(ierr);\
       sendbuf = (PetscInt)pcreason; \
       ierr = MPI_Allreduce(&sendbuf,&pcreason_max,1,MPIU_INT,MPI_MAX,PetscObjectComm((PetscObject)ksp));CHKERRQ(ierr); \
       if (pcreason_max) {\
-        ksp->reason = KSP_DIVERGED_PCSETUP_FAILED;\
+        ksp->reason = KSP_DIVERGED_PC_FAILED;\
         ierr        = VecSetInf(ksp->vec_sol);CHKERRQ(ierr);\
       } else {\
         ksp->reason = KSP_DIVERGED_NANORINF;\
       }\
       PetscFunctionReturn(0);\
     }\
-  }
+  } } while (0)
 
-/*
-    Either generate an error or mark as diverged when a real from a norm is Nan or Inf
-*/
-#define KSPCheckNorm(ksp,beta)           \
+/*MC
+   KSPCheckNorm - Checks if the result of a norm used by the corresponding KSP contains Inf or NaN. These indicate that the previous
+      application of the preconditioner generated an error
+
+   Collective on ksp
+
+   Input Parameter:
+.  ksp - the linear solver (KSP) context.
+
+   Output Parameter:
+.  beta - the result of the norm
+
+   Level: developer
+
+   Developer Note:
+   this is used to manage returning from KSP solvers whose preconditioners have failed in some way
+
+.seealso: KSPCreate(), KSPSetType(), KSP, KSPCheckDot(), KSPCheckSolve()
+M*/
+#define KSPCheckNorm(ksp,beta) do { \
   if (PetscIsInfOrNanReal(beta)) { \
     if (ksp->errorifnotconverged) SETERRQ(PetscObjectComm((PetscObject)ksp),PETSC_ERR_NOT_CONVERGED,"KSPSolve has not converged due to Nan or Inf norm");\
     else {\
       PetscErrorCode ierr;\
       PCFailedReason pcreason;\
       PetscInt       sendbuf,pcreason_max; \
-      ierr = PCGetSetUpFailedReason(ksp->pc,&pcreason);CHKERRQ(ierr);\
+      ierr = PCGetFailedReason(ksp->pc,&pcreason);CHKERRQ(ierr);\
       sendbuf = (PetscInt)pcreason; \
       ierr = MPI_Allreduce(&sendbuf,&pcreason_max,1,MPIU_INT,MPI_MAX,PetscObjectComm((PetscObject)ksp));CHKERRQ(ierr); \
       if (pcreason_max) {\
-        ksp->reason = KSP_DIVERGED_PCSETUP_FAILED;\
+        ksp->reason = KSP_DIVERGED_PC_FAILED;\
         ierr        = VecSetInf(ksp->vec_sol);CHKERRQ(ierr);\
       } else {\
         ksp->reason = KSP_DIVERGED_NANORINF;\
       }\
       PetscFunctionReturn(0);\
     }\
-  }
+  } } while (0)
 
 #endif

@@ -21,8 +21,6 @@ Reference:     Chwirut, D., NIST (197?).
                Ultrasonic Reference Block Study.
 */
 
-
-
 static char help[]="Finds the nonlinear least-squares solution to the model \n\
             y = exp[-b1*x]/(b2+b3*x)  +  e \n";
 
@@ -58,7 +56,6 @@ PetscErrorCode InitializeData(AppCtx *user);
 PetscErrorCode FormStartingPoint(Vec);
 PetscErrorCode EvaluateFunction(Tao, Vec, Vec, void *);
 PetscErrorCode EvaluateJacobian(Tao, Vec, Mat, Mat, void *);
-
 
 /*--------------------------------------------------------------------*/
 int main(int argc,char **argv)
@@ -114,7 +111,7 @@ int main(int argc,char **argv)
   } else if (wtype == 2) {
     ierr = TaoSetResidualWeights(tao,NULL,NOBSERVATIONS,w_row,w_col,w_vals);CHKERRQ(ierr);
   }
-  ierr = TaoSetJacobianRoutine(tao, J, J, EvaluateJacobian, (void*)&user);CHKERRQ(ierr);
+  ierr = TaoSetJacobianResidualRoutine(tao, J, J, EvaluateJacobian, (void*)&user);CHKERRQ(ierr);
   ierr = TaoSetTolerances(tao,1e-5,0.0,PETSC_DEFAULT);CHKERRQ(ierr);
 
   /* Check for any TAO command line arguments */

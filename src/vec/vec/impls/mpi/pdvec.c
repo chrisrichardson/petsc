@@ -3,9 +3,10 @@
      Code for some of the parallel vector primatives.
 */
 #include <../src/vec/vec/impls/mpi/pvecimpl.h>   /*I  "petscvec.h"   I*/
+#include <petsc/private/viewerimpl.h>
+#include <petsc/private/viewerhdf5impl.h>
 #include <petsc/private/glvisviewerimpl.h>
 #include <petsc/private/glvisvecimpl.h>
-#include <petscviewerhdf5.h>
 
 PetscErrorCode VecDestroy_MPI(Vec v)
 {
@@ -694,10 +695,10 @@ PetscErrorCode VecView_MPI_ADIOS2(Vec xin, PetscViewer viewer)
 #if defined(PETSC_HAVE_HDF5)
 PetscErrorCode VecView_MPI_HDF5(Vec xin, PetscViewer viewer)
 {
+  PetscViewer_HDF5  *hdf5 = (PetscViewer_HDF5*) viewer->data;
   /* TODO: It looks like we can remove the H5Sclose(filespace) and H5Dget_space(dset_id). Why do we do this? */
   hid_t             filespace; /* file dataspace identifier */
   hid_t             chunkspace; /* chunk dataset property identifier */
-  hid_t             plist_id;  /* property list identifier */
   hid_t             dset_id;   /* dataset identifier */
   hid_t             memspace;  /* memory dataspace identifier */
   hid_t             file_id;
@@ -709,7 +710,7 @@ PetscErrorCode VecView_MPI_HDF5(Vec xin, PetscViewer viewer)
   hsize_t           maxDims[4], dims[4], chunkDims[4], count[4],offset[4];
   PetscInt          timestep;
   PetscInt          low;
-  PetscInt          chunksize;
+  hsize_t           chunksize;
   const PetscScalar *x;
   const char        *vecname;
   PetscErrorCode    ierr;
@@ -810,11 +811,7 @@ PetscErrorCode VecView_MPI_HDF5(Vec xin, PetscViewer viewer)
     PetscStackCallHDF5Return(chunkspace,H5Pcreate,(H5P_DATASET_CREATE));
     PetscStackCallHDF5(H5Pset_chunk,(chunkspace, dim, chunkDims));
 
-#if (H5_VERS_MAJOR * 10000 + H5_VERS_MINOR * 100 + H5_VERS_RELEASE >= 10800)
     PetscStackCallHDF5Return(dset_id,H5Dcreate2,(group, vecname, filescalartype, filespace, H5P_DEFAULT, chunkspace, H5P_DEFAULT));
-#else
-    PetscStackCallHDF5Return(dset_id,H5Dcreate,(group, vecname, filescalartype, filespace, H5P_DEFAULT));
-#endif
     PetscStackCallHDF5(H5Pclose,(chunkspace));
   } else {
     PetscStackCallHDF5Return(dset_id,H5Dopen2,(group, vecname, H5P_DEFAULT));
@@ -870,37 +867,23 @@ PetscErrorCode VecView_MPI_HDF5(Vec xin, PetscViewer viewer)
     PetscStackCallHDF5Return(filespace,H5Screate,(H5S_NULL));
   }
 
-  /* Create property list for collective dataset write */
-  PetscStackCallHDF5Return(plist_id,H5Pcreate,(H5P_DATASET_XFER));
-#if defined(PETSC_HAVE_H5PSET_FAPL_MPIO)
-  PetscStackCallHDF5(H5Pset_dxpl_mpio,(plist_id, H5FD_MPIO_COLLECTIVE));
-#endif
-  /* To write dataset independently use H5Pset_dxpl_mpio(plist_id, H5FD_MPIO_INDEPENDENT) */
-
   ierr   = VecGetArrayRead(xin, &x);CHKERRQ(ierr);
-  PetscStackCallHDF5(H5Dwrite,(dset_id, memscalartype, memspace, filespace, plist_id, x));
+  PetscStackCallHDF5(H5Dwrite,(dset_id, memscalartype, memspace, filespace, hdf5->dxpl_id, x));
   PetscStackCallHDF5(H5Fflush,(file_id, H5F_SCOPE_GLOBAL));
   ierr   = VecRestoreArrayRead(xin, &x);CHKERRQ(ierr);
 
-#if defined(PETSC_USE_COMPLEX)
-  {
-    PetscInt   one = 1;
-    const char *groupname;
-    char       vecgroup[PETSC_MAX_PATH_LEN];
-
-    ierr = PetscViewerHDF5GetGroup(viewer,&groupname);CHKERRQ(ierr);
-    ierr = PetscSNPrintf(vecgroup,PETSC_MAX_PATH_LEN,"%s/%s",groupname ? groupname : "",vecname);CHKERRQ(ierr);
-    ierr = PetscViewerHDF5WriteAttribute(viewer,vecgroup,"complex",PETSC_INT,&one);CHKERRQ(ierr);
-  }
-#endif
   /* Close/release resources */
-  if (group != file_id) {
-    PetscStackCallHDF5(H5Gclose,(group));
-  }
-  PetscStackCallHDF5(H5Pclose,(plist_id));
+  PetscStackCallHDF5(H5Gclose,(group));
   PetscStackCallHDF5(H5Sclose,(filespace));
   PetscStackCallHDF5(H5Sclose,(memspace));
   PetscStackCallHDF5(H5Dclose,(dset_id));
+
+#if defined(PETSC_USE_COMPLEX)
+  {
+    PetscBool   tru = PETSC_TRUE;
+    ierr = PetscViewerHDF5WriteObjectAttribute(viewer,(PetscObject)xin,"complex",PETSC_BOOL,&tru);CHKERRQ(ierr);
+  }
+#endif
   ierr   = PetscInfo1(xin,"Wrote Vec object with name %s\n",vecname);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
@@ -1053,7 +1036,7 @@ PetscErrorCode VecSetValues_MPI(Vec xin,PetscInt ni,const PetscInt ix[],const Pe
         xx[row-start] += y[i];
       } else if (!xin->stash.donotstash) {
 #if defined(PETSC_USE_DEBUG)
-        if (ix[i] > xin->map->N) SETERRQ2(PETSC_COMM_SELF,PETSC_ERR_ARG_OUTOFRANGE,"Out of range index value %D maximum %D",ix[i],xin->map->N);
+        if (ix[i] >= xin->map->N) SETERRQ2(PETSC_COMM_SELF,PETSC_ERR_ARG_OUTOFRANGE,"Out of range index value %D maximum %D",ix[i],xin->map->N);
 #endif
         ierr = VecStashValue_Private(&xin->stash,row,y[i]);CHKERRQ(ierr);
       }

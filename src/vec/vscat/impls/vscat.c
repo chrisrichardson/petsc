@@ -42,7 +42,7 @@ static PetscErrorCode VecScatterBegin_MPI_ToAll(VecScatter ctx,Vec x,Vec y,Inser
          vectors have the same values
       */
       ierr = VecGetOwnershipRange(y,&rstart,&rend);CHKERRQ(ierr);
-      ierr = PetscMemcpy(yv,xv+rstart,yy_n*sizeof(PetscScalar));CHKERRQ(ierr);
+      ierr = PetscArraycpy(yv,xv+rstart,yy_n);CHKERRQ(ierr);
     } else {
       MPI_Comm    comm;
       PetscMPIInt rank;
@@ -341,15 +341,15 @@ PetscErrorCode VecScatterMemcpyPlanCopy(const VecScatterMemcpyPlan *in,VecScatte
   out->n = in->n;
   ierr   = PetscMalloc2(in->n,&out->optimized,in->n+1,&out->copy_offsets);CHKERRQ(ierr);
   ierr   = PetscMalloc2(in->copy_offsets[in->n],&out->copy_starts,in->copy_offsets[in->n],&out->copy_lengths);CHKERRQ(ierr);
-  ierr   = PetscMemcpy(out->optimized,in->optimized,sizeof(PetscBool)*in->n);CHKERRQ(ierr);
-  ierr   = PetscMemcpy(out->copy_offsets,in->copy_offsets,sizeof(PetscInt)*(in->n+1));CHKERRQ(ierr);
-  ierr   = PetscMemcpy(out->copy_starts,in->copy_starts,sizeof(PetscInt)*in->copy_offsets[in->n]);CHKERRQ(ierr);
-  ierr   = PetscMemcpy(out->copy_lengths,in->copy_lengths,sizeof(PetscInt)*in->copy_offsets[in->n]);CHKERRQ(ierr);
+  ierr   = PetscArraycpy(out->optimized,in->optimized,in->n);CHKERRQ(ierr);
+  ierr   = PetscArraycpy(out->copy_offsets,in->copy_offsets,in->n+1);CHKERRQ(ierr);
+  ierr   = PetscArraycpy(out->copy_starts,in->copy_starts,in->copy_offsets[in->n]);CHKERRQ(ierr);
+  ierr   = PetscArraycpy(out->copy_lengths,in->copy_lengths,in->copy_offsets[in->n]);CHKERRQ(ierr);
   if (in->stride_first) {
     ierr = PetscMalloc3(in->n,&out->stride_first,in->n,&out->stride_step,in->n,&out->stride_n);CHKERRQ(ierr);
-    ierr = PetscMemcpy(out->stride_first,in->stride_first,sizeof(PetscInt)*in->n);CHKERRQ(ierr);
-    ierr = PetscMemcpy(out->stride_step,in->stride_step,sizeof(PetscInt)*in->n);CHKERRQ(ierr);
-    ierr = PetscMemcpy(out->stride_n,in->stride_n,sizeof(PetscInt)*in->n);CHKERRQ(ierr);
+    ierr = PetscArraycpy(out->stride_first,in->stride_first,in->n);CHKERRQ(ierr);
+    ierr = PetscArraycpy(out->stride_step,in->stride_step,in->n);CHKERRQ(ierr);
+    ierr = PetscArraycpy(out->stride_n,in->stride_n,in->n);CHKERRQ(ierr);
   }
   PetscFunctionReturn(0);
 }
@@ -552,11 +552,15 @@ static PetscErrorCode VecScatterCreate_PtoS(VecScatter ctx,PetscErrorCode (*vecs
   if (ixblock) {
     /* special case block to block */
     if (iyblock) {
-      PetscInt       nx,ny,bsx,bsy;
+      PetscInt       nx,ny,bsx,bsy,min,max;
       const PetscInt *idx,*idy;
       ierr = ISGetBlockSize(iy,&bsy);CHKERRQ(ierr);
       ierr = ISGetBlockSize(ix,&bsx);CHKERRQ(ierr);
-      if (bsx == bsy && VecScatterOptimizedBS(bsx)) {
+      min  = PetscMin(bsx,bsy);
+      max  = PetscMax(bsx,bsy);
+      ierr = MPIU_Allreduce(MPI_IN_PLACE,&min,1,MPIU_INT,MPI_MIN,comm);CHKERRQ(ierr);
+      ierr = MPIU_Allreduce(MPI_IN_PLACE,&max,1,MPIU_INT,MPI_MAX,comm);CHKERRQ(ierr);
+      if (min == max && VecScatterOptimizedBS(bsx)) {
         ierr = ISBlockGetLocalSize(ix,&nx);CHKERRQ(ierr);
         ierr = ISBlockGetIndices(ix,&idx);CHKERRQ(ierr);
         ierr = ISBlockGetLocalSize(iy,&ny);CHKERRQ(ierr);

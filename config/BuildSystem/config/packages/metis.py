@@ -3,13 +3,19 @@ import config.package
 class Configure(config.package.CMakePackage):
   def __init__(self, framework):
     config.package.CMakePackage.__init__(self, framework)
-    self.gitcommit         = 'v5.1.0-p5'
+    self.gitcommit         = 'v5.1.0-p6'
     self.download          = ['git://https://bitbucket.org/petsc/pkg-metis.git','https://bitbucket.org/petsc/pkg-metis/get/'+self.gitcommit+'.tar.gz']
     self.downloaddirnames  = ['petsc-pkg-metis']
     self.functions         = ['METIS_PartGraphKway']
     self.includes          = ['metis.h']
     self.liblist           = [['libmetis.a'],['libmetis.a','libexecinfo.a']]
     self.hastests          = 1
+    return
+
+  def setupHelp(self, help):
+    config.package.CMakePackage.setupHelp(self,help)
+    import nargs
+    help.addArgument('METIS', '-download-metis-use-doubleprecision=<bool>', nargs.ArgBool(None, 0, 'enable METIS_USE_DOUBLEPRECISION'))
     return
 
   def setupDependencies(self, framework):
@@ -33,6 +39,8 @@ class Configure(config.package.CMakePackage):
       args.append('-DDEBUG=1')
     if self.getDefaultIndexSize() == 64:
       args.append('-DMETIS_USE_LONGINDEX=1')
+    if self.framework.argDB['download-metis-use-doubleprecision']:
+      args.append('-DMETIS_USE_DOUBLEPRECISION=1')
     args.append('-DMATH_LIB="'+self.libraries.toStringNoDupes(self.mathlib.lib)+'"')
     return args
 

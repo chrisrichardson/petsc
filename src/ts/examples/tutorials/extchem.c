@@ -240,7 +240,7 @@ static PetscErrorCode FormRHSFunction(TS ts,PetscReal t,Vec X,Vec F,void *ptr)
   ierr = VecGetArrayRead(X,&x);CHKERRQ(ierr);
   ierr = VecGetArray(F,&f);CHKERRQ(ierr);
 
-  ierr = PetscMemcpy(user->tchemwork,x,(user->Nspec+1)*sizeof(x[0]));CHKERRQ(ierr);
+  ierr = PetscArraycpy(user->tchemwork,x,user->Nspec+1);CHKERRQ(ierr);
   user->tchemwork[0] *= user->Tini; /* Dimensionalize */
   ierr = TC_getSrc(user->tchemwork,user->Nspec+1,f);TCCHKERRQ(ierr);
   f[0] /= user->Tini;           /* Non-dimensionalize */
@@ -259,7 +259,7 @@ static PetscErrorCode FormRHSJacobian(TS ts,PetscReal t,Vec X,Mat Amat,Mat Pmat,
 
   PetscFunctionBeginUser;
   ierr = VecGetArrayRead(X,&x);CHKERRQ(ierr);
-  ierr = PetscMemcpy(user->tchemwork,x,(user->Nspec+1)*sizeof(x[0]));CHKERRQ(ierr);
+  ierr = PetscArraycpy(user->tchemwork,x,user->Nspec+1);CHKERRQ(ierr);
   ierr = VecRestoreArrayRead(X,&x);CHKERRQ(ierr);
   user->tchemwork[0] *= user->Tini;  /* Dimensionalize temperature (first row) because that is what Tchem wants */
   ierr = TC_getJacTYN(user->tchemwork,user->Nspec,user->Jdense,1);CHKERRQ(ierr);
@@ -426,7 +426,7 @@ PETSC_UNUSED PetscErrorCode PrintSpecies(User user,Vec molef)
       requires: tchem
 
     test:
-      args: -chem http://combustion.berkeley.edu/gri_mech/version30/files30/grimech30.dat -thermo http://combustion.berkeley.edu/gri_mech/version30/files30/thermo30.dat -initial_species CH4,O2,N2,AR -initial_mole 0.0948178320887,0.189635664177,0.706766236705,0.00878026702874 -Tini 1500 -Tini 1500 -ts_arkimex_fully_implicit -ts_max_snes_failures -1  -ts_adapt_dt_max 1e-4 -ts_arkimex_type 4 -ts_final_time .005
+      args: -chem http://combustion.berkeley.edu/gri_mech/version30/files30/grimech30.dat -thermo http://combustion.berkeley.edu/gri_mech/version30/files30/thermo30.dat -initial_species CH4,O2,N2,AR -initial_mole 0.0948178320887,0.189635664177,0.706766236705,0.00878026702874 -Tini 1500 -Tini 1500 -ts_arkimex_fully_implicit -ts_max_snes_failures -1  -ts_adapt_dt_max 1e-4 -ts_arkimex_type 4 -ts_max_time .005
       requires: !single
       filter: grep -v iterations
 

@@ -92,7 +92,7 @@ int main(int argc, char **argv)
   else {
     PetscViewer viewer = NULL;
 
-    ierr = PetscOptionsGetViewer(comm,NULL,"-vec_tagger_boxes_view",&viewer,NULL,NULL);CHKERRQ(ierr);
+    ierr = PetscOptionsGetViewer(comm,NULL,NULL,"-vec_tagger_boxes_view",&viewer,NULL,NULL);CHKERRQ(ierr);
     if (viewer) {
       PetscBool iascii;
 
@@ -142,8 +142,8 @@ int main(int argc, char **argv)
   ierr = VecSetSizes(untagged,nuntagged,PETSC_DETERMINE);CHKERRQ(ierr);
   ierr = VecSetUp(untagged);CHKERRQ(ierr);
 
-  ierr = VecScatterCreateWithData(vec,isBlockGlobal,tagged,NULL,&taggedScatter);CHKERRQ(ierr);
-  ierr = VecScatterCreateWithData(vec,isComp,untagged,NULL,&untaggedScatter);CHKERRQ(ierr);
+  ierr = VecScatterCreate(vec,isBlockGlobal,tagged,NULL,&taggedScatter);CHKERRQ(ierr);
+  ierr = VecScatterCreate(vec,isComp,untagged,NULL,&untaggedScatter);CHKERRQ(ierr);
 
   ierr = VecScatterBegin(taggedScatter,vec,tagged,INSERT_VALUES,SCATTER_FORWARD);CHKERRQ(ierr);
   ierr = VecScatterEnd(taggedScatter,vec,tagged,INSERT_VALUES,SCATTER_FORWARD);CHKERRQ(ierr);

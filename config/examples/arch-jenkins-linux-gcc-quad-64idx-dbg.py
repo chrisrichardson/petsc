@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 if __name__ == '__main__':
   import sys
   import os
@@ -8,15 +8,18 @@ if __name__ == '__main__':
     '--with-cc=/home/petsc/soft/mpich-3.3b1/bin/mpicc',
     '--with-fc=/home/petsc/soft/mpich-3.3b1/bin/mpif90',
     '--with-cxx=/home/petsc/soft/mpich-3.3b1/bin/mpicxx',
-    '--with-blaslapack-dir=/home/petsc/soft/f2cblaslapack-3.4.2.q3',
+    '--with-debugging=yes',
+    'COPTFLAGS=-g -O',
+    'FOPTFLAGS=-g -O',
+    'CXXOPTFLAGS=-g -O',
+    '--with-blaslapack-dir=/home/petsc/soft/f2cblaslapack-3.4.2.q3/lib',
     '--with-clanguage=c',
     '--with-shared-libraries=no',
-    '--with-debugging=yes',
     '--with-scalar-type=real',
     '--with-64-bit-indices=yes',
     '--with-precision=__float128',
     '--with-sowing=1',
-    '--with-sowing-dir=/homes/petsc/soft/sowing-v1.1.25-p1',
+    '--with-sowing-dir=/home/petsc/soft/sowing-v1.1.25-p1',
     'DATAFILESPATH=/home/petsc/datafiles',
     ]
   configure.petsc_configure(configure_options)

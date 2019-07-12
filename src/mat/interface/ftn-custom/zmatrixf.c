@@ -52,6 +52,7 @@
 #define matdenserestorearrayread_        MATDENSERESTOREARRAYREAD
 #define matconvert_                      MATCONVERT
 #define matcreatesubmatrices_            MATCREATESUBMATRICES
+#define matcreatesubmatricesmpi_         MATCREATESUBMATRICESMPI
 #define matzerorowscolumns_              MATZEROROWSCOLUMNS
 #define matzerorowscolumnsis_            MATZEROROWSCOLUMNSIS
 #define matzerorowsstencil_              MATZEROROWSSTENCIL
@@ -91,6 +92,10 @@
 #define matgetlocalsize01_               MATGETLOCALSIZE01
 #define matsetnullspace_                 MATSETNULLSPACE
 #define matgetownershiprange_            MATGETOWNERSHIPRANGE
+#define matgetownershiprange00_          MATGETOWNERSHIPRANGE00
+#define matgetownershiprange10_          MATGETOWNERSHIPRANGE10
+#define matgetownershiprange01_          MATGETOWNERSHIPRANGE01
+#define matgetownershiprange11_          MATGETOWNERSHIPRANGE11
 #define matgetownershipis_               MATGETOWNERSHIPIS
 #define matgetownershiprangecolumn_      MATGETOWNERSHIPRANGECOLUMN
 #elif !defined(PETSC_HAVE_FORTRAN_UNDERSCORE)
@@ -144,6 +149,7 @@
 #define matdenserestorearrayread_        matdenserestorearrayread
 #define matconvert_                      matconvert
 #define matcreatesubmatrices_            matcreatesubmatrices
+#define matcreatesubmatricesmpi_         matcreatesubmatricesmpi
 #define matzerorowscolumns_              matzerorowscolumns
 #define matzerorowscolumnsis_            matzerorowscolumnsis
 #define matzerorowsstencil_              matzerorowsstencil
@@ -180,11 +186,43 @@
 #define matgetlocalsize01_               matgetlocalsize01
 #define matsetnullspace_                 matsetnullspace
 #define matgetownershiprange_            matgetownershiprange
+#define matgetownershiprange00_          matgetownershiprange00
+#define matgetownershiprange10_          matgetownershiprange10
+#define matgetownershiprange01_          matgetownershiprange01
+#define matgetownershiprange11_          matgetownershiprange11
 #define matgetownershipis_               matgetownershipis
 #define matgetownershiprangecolumn_      matgetownershiprangecolumn
 #endif
 
 PETSC_EXTERN void PETSC_STDCALL  matgetownershiprange_(Mat *mat,PetscInt *m,PetscInt *n, int *ierr )
+{
+  CHKFORTRANNULLINTEGER(m);
+  CHKFORTRANNULLINTEGER(n);
+  *ierr = MatGetOwnershipRange(*mat,m,n);
+}
+
+PETSC_EXTERN void PETSC_STDCALL  matgetownershiprange00_(Mat *mat,PetscInt *m,PetscInt *n, int *ierr )
+{
+  CHKFORTRANNULLINTEGER(m);
+  CHKFORTRANNULLINTEGER(n);
+  *ierr = MatGetOwnershipRange(*mat,m,n);
+}
+
+PETSC_EXTERN void PETSC_STDCALL  matgetownershiprange10_(Mat *mat,PetscInt *m,PetscInt *n, int *ierr )
+{
+  CHKFORTRANNULLINTEGER(m);
+  CHKFORTRANNULLINTEGER(n);
+  *ierr = MatGetOwnershipRange(*mat,m,n);
+}
+
+PETSC_EXTERN void PETSC_STDCALL  matgetownershiprange01_(Mat *mat,PetscInt *m,PetscInt *n, int *ierr )
+{
+  CHKFORTRANNULLINTEGER(m);
+  CHKFORTRANNULLINTEGER(n);
+  *ierr = MatGetOwnershipRange(*mat,m,n);
+}
+
+PETSC_EXTERN void PETSC_STDCALL  matgetownershiprange11_(Mat *mat,PetscInt *m,PetscInt *n, int *ierr )
 {
   CHKFORTRANNULLINTEGER(m);
   CHKFORTRANNULLINTEGER(n);
@@ -466,8 +504,8 @@ PETSC_EXTERN void PETSC_STDCALL matgetrow_(Mat *mat,PetscInt *row,PetscInt *ncol
   *ierr = MatGetRow(*mat,*row,ncols,oocols,oovals);
   if (*ierr) return;
 
-  if (oocols) { *ierr = PetscMemcpy(cols,my_ocols,(*ncols)*sizeof(PetscInt)); if (*ierr) return;}
-  if (oovals) { *ierr = PetscMemcpy(vals,my_ovals,(*ncols)*sizeof(PetscScalar)); if (*ierr) return;}
+  if (oocols) { *ierr = PetscArraycpy(cols,my_ocols,*ncols); if (*ierr) return;}
+  if (oovals) { *ierr = PetscArraycpy(vals,my_ovals,*ncols); if (*ierr) return;}
   matgetrowactive = 1;
 }
 
@@ -578,7 +616,7 @@ PETSC_EXTERN void PETSC_STDCALL matgetfactor_(Mat *mat,char* outtype PETSC_MIXED
 {
   char *t;
   FIXCHAR(outtype,len,t);
-  *ierr = MatGetFactor(*mat,t,*ftype,M);
+  *ierr = MatGetFactor(*mat,t,*ftype,M);if (*ierr) return;
   FREECHAR(outtype,t);
 }
 
@@ -586,7 +624,7 @@ PETSC_EXTERN void PETSC_STDCALL matconvert_(Mat *mat,char* outtype PETSC_MIXED_L
 {
   char *t;
   FIXCHAR(outtype,len,t);
-  *ierr = MatConvert(*mat,t,*reuse,M);
+  *ierr = MatConvert(*mat,t,*reuse,M);if (*ierr) return;
   FREECHAR(outtype,t);
 }
 
@@ -608,6 +646,27 @@ PETSC_EXTERN void PETSC_STDCALL matcreatesubmatrices_(Mat *mat,PetscInt *n,IS *i
     *ierr = PetscFree(lsmat);
   } else {
     *ierr = MatCreateSubMatrices(*mat,*n,isrow,iscol,*scall,&smat);
+  }
+}
+
+/*
+    MatCreateSubmatrices() is slightly different from C since the
+    Fortran provides the array to hold the submatrix objects,while in C that
+    array is allocated by the MatCreateSubmatrices()
+*/
+PETSC_EXTERN void PETSC_STDCALL matcreatesubmatricesmpi_(Mat *mat,PetscInt *n,IS *isrow,IS *iscol,MatReuse *scall,Mat *smat,PetscErrorCode *ierr)
+{
+  Mat      *lsmat;
+  PetscInt i;
+
+  if (*scall == MAT_INITIAL_MATRIX) {
+    *ierr = MatCreateSubMatricesMPI(*mat,*n,isrow,iscol,*scall,&lsmat);
+    for (i=0; i<=*n; i++) { /* lsmat[*n] might be a dummy matrix for saving data struc */
+      smat[i] = lsmat[i];
+    }
+    *ierr = PetscFree(lsmat);
+  } else {
+    *ierr = MatCreateSubMatricesMPI(*mat,*n,isrow,iscol,*scall,&smat);
   }
 }
 
@@ -647,7 +706,7 @@ PETSC_EXTERN void PETSC_STDCALL matsetoptionsprefix_(Mat *mat,char* prefix PETSC
   char *t;
 
   FIXCHAR(prefix,len,t);
-  *ierr = MatSetOptionsPrefix(*mat,t);
+  *ierr = MatSetOptionsPrefix(*mat,t);if (*ierr) return;
   FREECHAR(prefix,t);
 }
 

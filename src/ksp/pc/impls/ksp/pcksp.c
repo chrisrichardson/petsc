@@ -1,4 +1,5 @@
 #include <petsc/private/pcimpl.h>
+#include <petsc/private/kspimpl.h>
 #include <petscksp.h>            /*I "petscksp.h" I*/
 
 typedef struct {
@@ -27,14 +28,15 @@ static PetscErrorCode PCApply_KSP(PC pc,Vec x,Vec y)
   PetscErrorCode     ierr;
   PetscInt           its;
   PC_KSP             *jac = (PC_KSP*)pc->data;
-  KSPConvergedReason reason;
 
   PetscFunctionBegin;
-  ierr = KSPSolve(jac->ksp,x,y);CHKERRQ(ierr);
-  ierr = KSPGetConvergedReason(jac->ksp,&reason);CHKERRQ(ierr);
-  if (reason == KSP_DIVERGED_PCSETUP_FAILED) {
-    pc->failedreason = PC_SUBPC_ERROR;
+  if (jac->ksp->presolve) {
+    ierr = VecCopy(x,y);CHKERRQ(ierr);
+    ierr = KSPSolve(jac->ksp,y,y);CHKERRQ(ierr);
+  } else {
+    ierr = KSPSolve(jac->ksp,x,y);CHKERRQ(ierr);
   }
+  ierr = KSPCheckSolve(jac->ksp,pc,y);CHKERRQ(ierr);
   ierr      = KSPGetIterationNumber(jac->ksp,&its);CHKERRQ(ierr);
   jac->its += its;
   PetscFunctionReturn(0);
@@ -45,14 +47,15 @@ static PetscErrorCode PCApplyTranspose_KSP(PC pc,Vec x,Vec y)
   PetscErrorCode     ierr;
   PetscInt           its;
   PC_KSP             *jac = (PC_KSP*)pc->data;
-  KSPConvergedReason reason;
 
   PetscFunctionBegin;
-  ierr = KSPSolveTranspose(jac->ksp,x,y);CHKERRQ(ierr);
-  ierr = KSPGetConvergedReason(jac->ksp,&reason);CHKERRQ(ierr);
-  if (reason == KSP_DIVERGED_PCSETUP_FAILED) {
-    pc->failedreason = PC_SUBPC_ERROR;
+  if (jac->ksp->presolve) {
+    ierr = VecCopy(x,y);CHKERRQ(ierr);
+    ierr = KSPSolve(jac->ksp,y,y);CHKERRQ(ierr);
+  } else {
+    ierr = KSPSolveTranspose(jac->ksp,x,y);CHKERRQ(ierr);
   }
+  ierr = KSPCheckSolve(jac->ksp,pc,y);CHKERRQ(ierr);
   ierr      = KSPGetIterationNumber(jac->ksp,&its);CHKERRQ(ierr);
   jac->its += its;
   PetscFunctionReturn(0);
@@ -151,7 +154,6 @@ static PetscErrorCode  PCKSPSetKSP_KSP(PC pc,KSP ksp)
 
    Level: advanced
 
-.keywords:  PC, KSP, set, context
 @*/
 PetscErrorCode  PCKSPSetKSP(PC pc,KSP ksp)
 {
@@ -194,7 +196,6 @@ static PetscErrorCode  PCKSPGetKSP_KSP(PC pc,KSP *ksp)
 
    Level: advanced
 
-.keywords:  PC, KSP, get, context
 @*/
 PetscErrorCode  PCKSPGetKSP(PC pc,KSP *ksp)
 {
@@ -233,8 +234,6 @@ static PetscErrorCode PCSetFromOptions_KSP(PetscOptionItems *PetscOptionsObject,
                     the preconditioner, Pmat (see PCSetOperators())
 
    Level: intermediate
-
-   Concepts: inner iteration
 
    Notes:
     Using a Krylov method inside another Krylov method can be dangerous (you get divergence or

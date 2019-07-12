@@ -4,7 +4,7 @@ import os
 class Configure(config.package.CMakePackage):
   def __init__(self, framework):
     config.package.CMakePackage.__init__(self, framework)
-    self.gitcommit        = '103c8df9da' # xsdk-0.2.0 + superlu_dist-5.4.0 fix jul-31-2018
+    self.gitcommit        = 'fab6197820' # xsdk-0.2.0 + superlu_dist-5.4.0, superlu_dist-6.0.1  fix oct-12-2018
     #self.download         = ['git://https://github.com/trilinos/trilinos','https://github.com/trilinos/trilinos/archive/'+self.gitcommit+'.tar.gz']
     self.download         = ['git://https://github.com/balay/trilinos','https://github.com/balay/trilinos/archive/'+self.gitcommit+'.tar.gz']
     self.downloaddirnames = ['trilinos']
@@ -123,7 +123,7 @@ class Configure(config.package.CMakePackage):
       raise RuntimeError('Trilinos requires hdf5 so make sure you have --download-hdf5 or --with-hdf5-dir if you are building Trilinos')
 
     # Check for 64bit pointers
-    if self.types.sizes['known-sizeof-void-p'] != 8:
+    if self.types.sizes['void-p'] != 8:
       raise RuntimeError('Trilinos requires 64bit compilers, your compiler is using 32 bit pointers!')
 
     args = config.package.CMakePackage.formCMakeConfigureArgs(self)

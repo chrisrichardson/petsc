@@ -27,8 +27,6 @@ typedef struct {
 
    Level: intermediate
 
-   Concepts: Aggregation AMG preconditioner
-
 .seealso: ()
 @*/
 PetscErrorCode PCGAMGSetNSmooths(PC pc, PetscInt n)
@@ -65,8 +63,6 @@ static PetscErrorCode PCGAMGSetNSmooths_AGG(PC pc, PetscInt n)
 .  -pc_gamg_sym_graph <true,default=false> - symmetrize the graph before computing the aggregation
 
    Level: intermediate
-
-   Concepts: Aggregation AMG preconditioner
 
 .seealso: PCGAMGSetSquareGraph()
 @*/
@@ -107,8 +103,6 @@ static PetscErrorCode PCGAMGSetSymGraph_AGG(PC pc, PetscBool n)
    Squaring the graph increases the rate of coarsening (aggressive coarsening) and thereby reduces the complexity of the coarse grids, and generally results in slower solver converge rates. Reducing coarse grid complexity reduced the complexity of Galerkin coarse grid construction considerably.
 
    Level: intermediate
-
-   Concepts: Aggregation AMG preconditioner
 
 .seealso: PCGAMGSetSymGraph(), PCGAMGSetThreshold()
 @*/
@@ -598,7 +592,7 @@ static PetscErrorCode PCSetData_AGG(PC pc, Mat a_A)
 
       ierr = DMGetNumFields(dm, &Nf);CHKERRQ(ierr);
       if (Nf) {
-        ierr = DMGetField(dm, 0, &deformation);CHKERRQ(ierr);
+        ierr = DMGetField(dm, 0, NULL, &deformation);CHKERRQ(ierr);
         ierr = PetscObjectQuery((PetscObject)deformation,"nearnullspace",(PetscObject*)&mnull);CHKERRQ(ierr);
         if (!mnull) {
           ierr = PetscObjectQuery((PetscObject)deformation,"nullspace",(PetscObject*)&mnull);CHKERRQ(ierr);
@@ -1123,9 +1117,9 @@ static PetscErrorCode PCGAMGOptProlongator_AGG(PC pc,Mat Amat,Mat *a_P)
     ierr = PetscRandomDestroy(&random);CHKERRQ(ierr);
 
     ierr = KSPCreate(comm,&eksp);CHKERRQ(ierr);
+    ierr = KSPSetErrorIfNotConverged(eksp,pc->erroriffailure);CHKERRQ(ierr);
     ierr = KSPSetTolerances(eksp,PETSC_DEFAULT,PETSC_DEFAULT,PETSC_DEFAULT,10);CHKERRQ(ierr);
     ierr = KSPSetNormType(eksp, KSP_NORM_NONE);CHKERRQ(ierr);
-    ierr = KSPSetErrorIfNotConverged(eksp,PETSC_FALSE);CHKERRQ(ierr);
 
     ierr = KSPSetInitialGuessNonzero(eksp, PETSC_FALSE);CHKERRQ(ierr);
     ierr = KSPSetOperators(eksp, Amat, Amat);CHKERRQ(ierr);
@@ -1142,6 +1136,7 @@ static PetscErrorCode PCGAMGOptProlongator_AGG(PC pc,Mat Amat,Mat *a_P)
     ierr = PetscLogEventDeactivate(KSP_Solve);CHKERRQ(ierr);
     ierr = PetscLogEventDeactivate(PC_Apply);CHKERRQ(ierr);
     ierr = KSPSolve(eksp, bb, xx);CHKERRQ(ierr);
+    ierr = KSPCheckSolve(eksp,pc,xx);CHKERRQ(ierr);
     ierr = PetscLogEventActivate(KSP_Solve);CHKERRQ(ierr);
     ierr = PetscLogEventActivate(PC_Apply);CHKERRQ(ierr);
 

@@ -36,7 +36,7 @@ static PetscErrorCode ProcessOptions(MPI_Comm comm, AppCtx *options)
   PetscFunctionReturn(0);
 };
 
-static PetscErrorCode DMPlexWriteAndReadHDF5(DM dm, const char filename[], PetscViewerFormat format, DM *dm_new)
+static PetscErrorCode DMPlexWriteAndReadHDF5(DM dm, const char filename[], PetscViewerFormat format, const char prefix[], DM *dm_new)
 {
   DM             dmnew;
   PetscViewer    v;
@@ -50,7 +50,8 @@ static PetscErrorCode DMPlexWriteAndReadHDF5(DM dm, const char filename[], Petsc
   ierr = PetscViewerFileSetMode(v, FILE_MODE_READ);CHKERRQ(ierr);
   ierr = DMCreate(PETSC_COMM_WORLD, &dmnew);CHKERRQ(ierr);
   ierr = DMSetType(dmnew, DMPLEX);CHKERRQ(ierr);
-  ierr = DMLoad(dmnew, v);
+  ierr = DMSetOptionsPrefix(dmnew, prefix);CHKERRQ(ierr);
+  ierr = DMLoad(dmnew, v);CHKERRQ(ierr);
 
   ierr = PetscViewerPopFormat(v);CHKERRQ(ierr);
   ierr = PetscViewerDestroy(&v);CHKERRQ(ierr);
@@ -88,15 +89,14 @@ int main(int argc, char **argv)
   ierr = DMSetFromOptions(dm);CHKERRQ(ierr);
   ierr = DMViewFromOptions(dm, NULL, "-dm_view");CHKERRQ(ierr);
 
-  ierr = DMPlexWriteAndReadHDF5(dm, "dmdist.h5", user.format, &dmnew);CHKERRQ(ierr);
+  ierr = DMPlexWriteAndReadHDF5(dm, "dmdist.h5", user.format, "new_", &dmnew);CHKERRQ(ierr);
 
   if (user.second_write_read) {
     ierr = DMDestroy(&dm);CHKERRQ(ierr);
     dm = dmnew;
-    ierr = DMPlexWriteAndReadHDF5(dm, "dmdist.h5", user.format, &dmnew);CHKERRQ(ierr);
+    ierr = DMPlexWriteAndReadHDF5(dm, "dmdist.h5", user.format, "new_", &dmnew);CHKERRQ(ierr);
   }
 
-  ierr = DMSetOptionsPrefix(dmnew,"new_");CHKERRQ(ierr);
   ierr = DMViewFromOptions(dmnew, NULL, "-dm_view");CHKERRQ(ierr);
   /* TODO: Is it still true? */
   /* The NATIVE format for coordiante viewing is killing parallel output, since we have a local vector. Map it to global, and it will work. */
@@ -116,48 +116,45 @@ int main(int argc, char **argv)
 
 /*TEST
   build:
-    requires: hdf5 exodusii
+    requires: hdf5
   # Idempotence of saving/loading
+  #   Have to replace Exodus file, which is creating uninterpolated edges
   test:
     suffix: 0
-    requires: hdf5 exodusii
+    requires: exodusii broken
     args: -filename ${wPETSC_DIR}/share/petsc/datafiles/meshes/Rect-tri3.exo -dm_view ascii::ascii_info_detail
     args: -format hdf5_petsc -compare
   test:
     suffix: 1
-    requires: hdf5 exodusii parmetis !define(PETSC_USE_64BIT_INDICES)
+    requires: exodusii parmetis !define(PETSC_USE_64BIT_INDICES) broken
     nsize: 2
     args: -filename ${wPETSC_DIR}/share/petsc/datafiles/meshes/Rect-tri3.exo -dm_view ascii::ascii_info_detail
     args: -petscpartitioner_type parmetis
     args: -format hdf5_petsc -new_dm_view ascii::ascii_info_detail 
-  test:
-    suffix: 2
-    requires: hdf5 exodusii
-    nsize: {{1 2 4 8}separate output}
+  testset:
+    requires: exodusii
     args: -filename ${wPETSC_DIR}/share/petsc/datafiles/meshes/blockcylinder-50.exo
     args: -petscpartitioner_type simple
     args: -dm_view ascii::ascii_info_detail
     args: -new_dm_view ascii::ascii_info_detail
-    args: -format {{default hdf5_petsc}separate output}
-    args: -interpolate {{0 1}separate output}
-  test:
-    suffix: 2a
-    requires: hdf5 exodusii
-    nsize: {{1 2 4 8}separate output}
-    args: -filename ${wPETSC_DIR}/share/petsc/datafiles/meshes/blockcylinder-50.exo
-    args: -petscpartitioner_type simple
-    args: -dm_view ascii::ascii_info_detail
-    args: -new_dm_view ascii::ascii_info_detail
-    args: -format {{hdf5_xdmf hdf5_viz}separate output}
+    test:
+      suffix: 2
+      nsize: {{1 2 4 8}separate output}
+      args: -format {{default hdf5_petsc}separate output}
+      args: -interpolate {{0 1}separate output}
+    test:
+      suffix: 2a
+      nsize: {{1 2 4 8}separate output}
+      args: -format {{hdf5_xdmf hdf5_viz}separate output}
   test:
     suffix: 3
-    requires: hdf5 exodusii
+    requires: exodusii
     args: -filename ${wPETSC_DIR}/share/petsc/datafiles/meshes/blockcylinder-50.exo -compare
 
   # Load HDF5 file in XDMF format in parallel, write, read dm1, write, read dm2, and compare dm1 and dm2
   test:
     suffix: 4
-    requires: hdf5 !complex
+    requires: !complex
     nsize: {{1 2 3 4 8}}
     args: -filename ${wPETSC_DIR}/share/petsc/datafiles/meshes/blockcylinder-50.h5
     args: -dm_plex_create_from_hdf5_xdmf -distribute 0 -format hdf5_xdmf -second_write_read -compare
@@ -165,7 +162,7 @@ int main(int argc, char **argv)
   # reproduce PetscSFView() crash - fixed, left as regression test
   test:
     suffix: new_dm_view
-    requires: hdf5 exodusii !define(PETSC_USE_64BIT_INDICES)
+    requires: exodusii
     nsize: 2
-    args: -filename ${wPETSC_DIR}/share/petsc/datafiles/meshes/TwoQuads.exo -new_dm_view ascii::ascii_info_detail
+    args: -filename ${wPETSC_DIR}/share/petsc/datafiles/meshes/TwoQuads.exo -new_dm_view ascii:ex5_new_dm_view.log:ascii_info_detail
 TEST*/

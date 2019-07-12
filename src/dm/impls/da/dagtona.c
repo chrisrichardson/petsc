@@ -13,7 +13,7 @@
    DMDAGlobalToNaturalAllCreate - Creates a scatter context that maps from the
      global vector the entire vector to each processor in natural numbering
 
-   Collective on DMDA
+   Collective on da
 
    Input Parameter:
 .  da - the distributed array context
@@ -22,8 +22,6 @@
 .  scatter - the scatter context
 
    Level: advanced
-
-.keywords: distributed array, global to local, begin, coarse problem
 
 .seealso: DMDAGlobalToNaturalEnd(), DMLocalToGlobalBegin(), DMDACreate2d(),
           DMGlobalToLocalBegin(), DMGlobalToLocalEnd(), DMDACreateNaturalVector()
@@ -49,7 +47,7 @@ PetscErrorCode  DMDAGlobalToNaturalAllCreate(DM da,VecScatter *scatter)
   ierr = AOPetscToApplicationIS(ao,to);CHKERRQ(ierr);
   ierr = ISCreateStride(PetscObjectComm((PetscObject)da),N,0,1,&from);CHKERRQ(ierr);
   ierr = VecCreateSeqWithArray(PETSC_COMM_SELF,dd->w,N,0,&tmplocal);CHKERRQ(ierr);
-  ierr = VecScatterCreateWithData(global,from,tmplocal,to,scatter);CHKERRQ(ierr);
+  ierr = VecScatterCreate(global,from,tmplocal,to,scatter);CHKERRQ(ierr);
   ierr = VecDestroy(&tmplocal);CHKERRQ(ierr);
   ierr = VecDestroy(&global);CHKERRQ(ierr);
   ierr = ISDestroy(&from);CHKERRQ(ierr);
@@ -61,7 +59,7 @@ PetscErrorCode  DMDAGlobalToNaturalAllCreate(DM da,VecScatter *scatter)
    DMDANaturalAllToGlobalCreate - Creates a scatter context that maps from a copy
      of the entire vector on each processor to its local part in the global vector.
 
-   Collective on DMDA
+   Collective on da
 
    Input Parameter:
 .  da - the distributed array context
@@ -70,8 +68,6 @@ PetscErrorCode  DMDAGlobalToNaturalAllCreate(DM da,VecScatter *scatter)
 .  scatter - the scatter context
 
    Level: advanced
-
-.keywords: distributed array, global to local, begin, coarse problem
 
 .seealso: DMDAGlobalToNaturalEnd(), DMLocalToGlobalBegin(), DMDACreate2d(),
           DMGlobalToLocalBegin(), DMGlobalToLocalEnd(), DMDACreateNaturalVector()
@@ -98,7 +94,7 @@ PetscErrorCode  DMDANaturalAllToGlobalCreate(DM da,VecScatter *scatter)
   ierr = AOPetscToApplicationIS(ao,from);CHKERRQ(ierr);
   ierr = ISCreateStride(PetscObjectComm((PetscObject)da),m,start,1,&to);CHKERRQ(ierr);
   ierr = VecCreateSeqWithArray(PETSC_COMM_SELF,dd->w,M,0,&tmplocal);CHKERRQ(ierr);
-  ierr = VecScatterCreateWithData(tmplocal,from,global,to,scatter);CHKERRQ(ierr);
+  ierr = VecScatterCreate(tmplocal,from,global,to,scatter);CHKERRQ(ierr);
   ierr = VecDestroy(&tmplocal);CHKERRQ(ierr);
   ierr = VecDestroy(&global);CHKERRQ(ierr);
   ierr = ISDestroy(&from);CHKERRQ(ierr);

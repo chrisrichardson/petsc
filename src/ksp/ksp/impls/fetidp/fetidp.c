@@ -26,8 +26,8 @@ static const char citation[] =
 "pages = {667-696},\n"
 "year = {2014},\n"
 "doi = {10.1142/S0218202513500632},\n"
-"URL = {http://www.worldscientific.com/doi/abs/10.1142/S0218202513500632},\n"
-"eprint = {http://www.worldscientific.com/doi/pdf/10.1142/S0218202513500632}\n"
+"URL = {https://www.worldscientific.com/doi/abs/10.1142/S0218202513500632},\n"
+"eprint = {https://www.worldscientific.com/doi/pdf/10.1142/S0218202513500632}\n"
 "}\n";
 static const char citation2[] =
 "@article{li2013nonoverlapping,\n"
@@ -78,7 +78,7 @@ static PetscErrorCode KSPFETIDPSetPressureOperator_FETIDP(KSP ksp, Mat P)
 /*@
  KSPFETIDPSetPressureOperator - Sets the operator used to setup the pressure preconditioner for saddle point FETI-DP.
 
-   Collective on KSP
+   Collective on ksp
 
    Input Parameters:
 +  ksp - the FETI-DP Krylov solver
@@ -189,7 +189,7 @@ static PetscErrorCode KSPFETIDPSetInnerBDDC_FETIDP(KSP ksp, PC pc)
 /*@
  KSPFETIDPSetInnerBDDC - Sets the BDDC preconditioner used to setup the FETI-DP matrix for the Lagrange multipliers
 
-   Collective on KSP
+   Collective on ksp
 
    Input Parameters:
 +  ksp - the FETI-DP Krylov solver
@@ -631,8 +631,8 @@ static PetscErrorCode KSPFETIDPSetUpOperators(KSP ksp)
       }
 
       /* interior dofs in layout */
-      ierr = PetscMemzero(matis->sf_leafdata,n*sizeof(PetscInt));CHKERRQ(ierr);
-      ierr = PetscMemzero(matis->sf_rootdata,nl*sizeof(PetscInt));CHKERRQ(ierr);
+      ierr = PetscArrayzero(matis->sf_leafdata,n);CHKERRQ(ierr);
+      ierr = PetscArrayzero(matis->sf_rootdata,nl);CHKERRQ(ierr);
       ierr = ISGetLocalSize(II,&ni);CHKERRQ(ierr);
       ierr = ISGetIndices(II,&idxs);CHKERRQ(ierr);
       for (i=0;i<ni;i++) matis->sf_leafdata[idxs[i]] = 1;
@@ -699,8 +699,8 @@ static PetscErrorCode KSPFETIDPSetUpOperators(KSP ksp)
         ierr = ISDifference(Pall,pII,&pP);CHKERRQ(ierr);
         ierr = PetscObjectCompose((PetscObject)fetidp->innerbddc,"__KSPFETIDP_pP",(PetscObject)pP);CHKERRQ(ierr);
         /* need all local pressure dofs */
-        ierr = PetscMemzero(matis->sf_leafdata,n*sizeof(PetscInt));CHKERRQ(ierr);
-        ierr = PetscMemzero(matis->sf_rootdata,nl*sizeof(PetscInt));CHKERRQ(ierr);
+        ierr = PetscArrayzero(matis->sf_leafdata,n);CHKERRQ(ierr);
+        ierr = PetscArrayzero(matis->sf_rootdata,nl);CHKERRQ(ierr);
         ierr = ISGetLocalSize(Pall,&ni);CHKERRQ(ierr);
         ierr = ISGetIndices(Pall,&idxs);CHKERRQ(ierr);
         for (i=0;i<ni;i++) matis->sf_rootdata[idxs[i]-rst] = 1;
@@ -712,8 +712,8 @@ static PetscErrorCode KSPFETIDPSetUpOperators(KSP ksp)
       }
 
       if (!Pall) {
-        ierr = PetscMemzero(matis->sf_leafdata,n*sizeof(PetscInt));CHKERRQ(ierr);
-        ierr = PetscMemzero(matis->sf_rootdata,nl*sizeof(PetscInt));CHKERRQ(ierr);
+        ierr = PetscArrayzero(matis->sf_leafdata,n);CHKERRQ(ierr);
+        ierr = PetscArrayzero(matis->sf_rootdata,nl);CHKERRQ(ierr);
         ierr = ISGetLocalSize(lPall,&ni);CHKERRQ(ierr);
         ierr = ISGetIndices(lPall,&idxs);CHKERRQ(ierr);
         for (i=0;i<ni;i++) matis->sf_leafdata[idxs[i]] = 1;
@@ -744,8 +744,8 @@ static PetscErrorCode KSPFETIDPSetUpOperators(KSP ksp)
       ierr = ISDestroy(&pII);CHKERRQ(ierr);
 
       /* local selected pressures in subdomain-wise and global ordering */
-      ierr = PetscMemzero(matis->sf_leafdata,n*sizeof(PetscInt));CHKERRQ(ierr);
-      ierr = PetscMemzero(matis->sf_rootdata,nl*sizeof(PetscInt));CHKERRQ(ierr);
+      ierr = PetscArrayzero(matis->sf_leafdata,n);CHKERRQ(ierr);
+      ierr = PetscArrayzero(matis->sf_rootdata,nl);CHKERRQ(ierr);
       if (!ploc) {
         PetscInt *widxs2;
 
@@ -1158,12 +1158,15 @@ static PetscErrorCode KSPSetUp_FETIDP(KSP ksp)
 
 static PetscErrorCode KSPSolve_FETIDP(KSP ksp)
 {
-  PetscErrorCode ierr;
-  Mat            F,A;
-  MatNullSpace   nsp;
-  Vec            X,B,Xl,Bl;
-  KSP_FETIDP     *fetidp = (KSP_FETIDP*)ksp->data;
-  PC_BDDC        *pcbddc = (PC_BDDC*)fetidp->innerbddc->data;
+  PetscErrorCode     ierr;
+  Mat                F,A;
+  MatNullSpace       nsp;
+  Vec                X,B,Xl,Bl;
+  KSP_FETIDP         *fetidp = (KSP_FETIDP*)ksp->data;
+  PC_BDDC            *pcbddc = (PC_BDDC*)fetidp->innerbddc->data;
+  KSPConvergedReason reason;
+  PC                 pc;
+  PCFailedReason     pcreason;
 
   PetscFunctionBegin;
   ierr = PetscCitationsRegister(citation,&cited);CHKERRQ(ierr);
@@ -1181,6 +1184,16 @@ static PetscErrorCode KSPSolve_FETIDP(KSP ksp)
     ierr = KSPSolveTranspose(fetidp->innerksp,Bl,Xl);CHKERRQ(ierr);
   } else {
     ierr = KSPSolve(fetidp->innerksp,Bl,Xl);CHKERRQ(ierr);
+  }
+  ierr = KSPGetConvergedReason(fetidp->innerksp,&reason);CHKERRQ(ierr);
+  ierr = KSPGetPC(fetidp->innerksp,&pc);CHKERRQ(ierr);
+  ierr = PCGetFailedReason(pc,&pcreason);CHKERRQ(ierr);
+  if ((reason < 0 && reason != KSP_DIVERGED_ITS) || pcreason) {
+    PetscInt its;
+    ierr = KSPGetIterationNumber(fetidp->innerksp,&its);CHKERRQ(ierr);
+    ksp->reason = KSP_DIVERGED_PC_FAILED;
+    ierr = VecSetInf(Xl);CHKERRQ(ierr);
+    ierr = PetscInfo3(ksp,"Inner KSP solve failed: %s %s at iteration %D",KSPConvergedReasons[reason],PCFailedReasons[pcreason],its);CHKERRQ(ierr);
   }
   ierr = PCBDDCMatFETIDPGetSolution(F,Xl,X);CHKERRQ(ierr);
   ierr = MatGetNullSpace(A,&nsp);CHKERRQ(ierr);

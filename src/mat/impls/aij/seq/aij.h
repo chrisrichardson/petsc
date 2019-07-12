@@ -59,7 +59,7 @@ typedef struct {
   PetscInt    *api,*apj;       /* symbolic structure of A*P */
   PetscScalar *apa;            /* temporary array for storing one row of A*P */
   PetscErrorCode (*destroy)(Mat);
-} Mat_PtAP;
+} Mat_AP;
 
 typedef struct {
   MatTransposeColoring matcoloring;
@@ -116,12 +116,13 @@ typedef struct {
   PetscBool   idiagvalid;                     /* current idiag[] and mdiag[] are valid */
   PetscScalar *ibdiag;                        /* inverses of block diagonals */
   PetscBool   ibdiagvalid;                    /* inverses of block diagonals are valid. */
+  PetscBool   diagonaldense;                  /* all entries along the diagonal have been set; i.e. no missing diagonal terms */
   PetscScalar fshift,omega;                   /* last used omega and fshift */
 
   ISColoring  coloring;                       /* set with MatADSetColoring() used by MatADSetValues() */
 
   PetscScalar         *matmult_abdense;    /* used by MatMatMult() */
-  Mat_PtAP            *ptap;               /* used by MatPtAP() */
+  Mat_AP              *ap;                 /* used by MatPtAP() */
   Mat_MatMatMatMult   *matmatmatmult;      /* used by MatMatMatMult() */
   Mat_RARt            *rart;               /* used by MatRARt() */
   Mat_MatMatTransMult *abt;                /* used by MatMatTransposeMult() */
@@ -162,12 +163,12 @@ PETSC_STATIC_INLINE PetscErrorCode MatSeqXAIJFreeAIJ(Mat AA,MatScalar **a,PetscI
     /* copy over old data into new slots */ \
     for (ii=0; ii<ROW+1; ii++) {new_i[ii] = AI[ii];} \
     for (ii=ROW+1; ii<AM+1; ii++) {new_i[ii] = AI[ii]+CHUNKSIZE;} \
-    ierr = PetscMemcpy(new_j,AJ,(AI[ROW]+NROW)*sizeof(PetscInt));CHKERRQ(ierr); \
+    ierr = PetscArraycpy(new_j,AJ,AI[ROW]+NROW);CHKERRQ(ierr); \
     len  = (new_nz - CHUNKSIZE - AI[ROW] - NROW); \
-    ierr = PetscMemcpy(new_j+AI[ROW]+NROW+CHUNKSIZE,AJ+AI[ROW]+NROW,len*sizeof(PetscInt));CHKERRQ(ierr); \
-    ierr = PetscMemcpy(new_a,AA,BS2*(AI[ROW]+NROW)*sizeof(datatype));CHKERRQ(ierr); \
-    ierr = PetscMemzero(new_a+BS2*(AI[ROW]+NROW),BS2*CHUNKSIZE*sizeof(datatype));CHKERRQ(ierr); \
-    ierr = PetscMemcpy(new_a+BS2*(AI[ROW]+NROW+CHUNKSIZE),AA+BS2*(AI[ROW]+NROW),BS2*len*sizeof(datatype));CHKERRQ(ierr);  \
+    ierr = PetscArraycpy(new_j+AI[ROW]+NROW+CHUNKSIZE,AJ+AI[ROW]+NROW,len);CHKERRQ(ierr); \
+    ierr = PetscArraycpy(new_a,AA,BS2*(AI[ROW]+NROW));CHKERRQ(ierr);    \
+    ierr = PetscArrayzero(new_a+BS2*(AI[ROW]+NROW),BS2*CHUNKSIZE);CHKERRQ(ierr); \
+    ierr = PetscArraycpy(new_a+BS2*(AI[ROW]+NROW+CHUNKSIZE),AA+BS2*(AI[ROW]+NROW),BS2*len);CHKERRQ(ierr);  \
     /* free up old matrix storage */ \
     ierr              = MatSeqXAIJFreeAIJ(A,&Ain->a,&Ain->j,&Ain->i);CHKERRQ(ierr); \
     AA                = new_a; \
@@ -195,9 +196,9 @@ PETSC_STATIC_INLINE PetscErrorCode MatSeqXAIJFreeAIJ(Mat AA,MatScalar **a,PetscI
     /* copy over old data into new slots */ \
     for (ii=0; ii<ROW+1; ii++) {new_i[ii] = AI[ii];} \
     for (ii=ROW+1; ii<AM+1; ii++) {new_i[ii] = AI[ii]+CHUNKSIZE;} \
-    ierr = PetscMemcpy(new_j,AJ,(AI[ROW]+NROW)*sizeof(PetscInt));CHKERRQ(ierr); \
+    ierr = PetscArraycpy(new_j,AJ,AI[ROW]+NROW);CHKERRQ(ierr); \
     len  = (new_nz - CHUNKSIZE - AI[ROW] - NROW); \
-    ierr = PetscMemcpy(new_j+AI[ROW]+NROW+CHUNKSIZE,AJ+AI[ROW]+NROW,len*sizeof(PetscInt));CHKERRQ(ierr); \
+    ierr = PetscArraycpy(new_j+AI[ROW]+NROW+CHUNKSIZE,AJ+AI[ROW]+NROW,len);CHKERRQ(ierr); \
  \
     /* free up old matrix storage */ \
     ierr              = MatSeqXAIJFreeAIJ(A,&Ain->a,&Ain->j,&Ain->i);CHKERRQ(ierr); \
@@ -239,7 +240,6 @@ PETSC_INTERN PetscErrorCode MatSetOption_SeqAIJ(Mat,MatOption,PetscBool);
 
 PETSC_INTERN PetscErrorCode MatGetSymbolicTranspose_SeqAIJ(Mat,PetscInt *[],PetscInt *[]);
 PETSC_INTERN PetscErrorCode MatGetSymbolicTransposeReduced_SeqAIJ(Mat,PetscInt,PetscInt,PetscInt *[],PetscInt *[]);
-PETSC_INTERN PetscErrorCode MatTranspose_SeqAIJ_FAST(Mat,MatReuse,Mat *);
 PETSC_INTERN PetscErrorCode MatRestoreSymbolicTranspose_SeqAIJ(Mat,PetscInt *[],PetscInt *[]);
 PETSC_INTERN PetscErrorCode MatTransposeSymbolic_SeqAIJ(Mat,Mat*);
 PETSC_INTERN PetscErrorCode MatTranspose_SeqAIJ(Mat,MatReuse,Mat*);
@@ -269,21 +269,30 @@ PETSC_INTERN PetscErrorCode MatEqual_SeqAIJ(Mat,Mat,PetscBool*);
 PETSC_INTERN PetscErrorCode MatFDColoringCreate_SeqXAIJ(Mat,ISColoring,MatFDColoring);
 PETSC_INTERN PetscErrorCode MatFDColoringSetUp_SeqXAIJ(Mat,ISColoring,MatFDColoring);
 PETSC_INTERN PetscErrorCode MatFDColoringSetUpBlocked_AIJ_Private(Mat,MatFDColoring,PetscInt);
+PETSC_INTERN PetscErrorCode MatLoad_AIJ_HDF5(Mat,PetscViewer);
+PETSC_INTERN PetscErrorCode MatLoad_SeqAIJ_Binary(Mat,PetscViewer);
 PETSC_INTERN PetscErrorCode MatLoad_SeqAIJ(Mat,PetscViewer);
 PETSC_INTERN PetscErrorCode RegisterApplyPtAPRoutines_Private(Mat);
 
 PETSC_INTERN PetscErrorCode MatMatMult_SeqAIJ_SeqAIJ(Mat,Mat,MatReuse,PetscReal,Mat*);
 PETSC_INTERN PetscErrorCode MatMatMultSymbolic_SeqAIJ_SeqAIJ(Mat,Mat,PetscReal,Mat*);
+PETSC_INTERN PetscErrorCode MatMatMultSymbolic_SeqAIJ_SeqAIJ_Sorted(Mat,Mat,PetscReal,Mat*);
 PETSC_INTERN PetscErrorCode MatMatMultSymbolic_SeqDense_SeqAIJ(Mat,Mat,PetscReal,Mat*);
 PETSC_INTERN PetscErrorCode MatMatMultSymbolic_SeqAIJ_SeqAIJ_Scalable(Mat,Mat,PetscReal,Mat*);
 PETSC_INTERN PetscErrorCode MatMatMultSymbolic_SeqAIJ_SeqAIJ_Scalable_fast(Mat,Mat,PetscReal,Mat*);
 PETSC_INTERN PetscErrorCode MatMatMultSymbolic_SeqAIJ_SeqAIJ_Heap(Mat,Mat,PetscReal,Mat*);
 PETSC_INTERN PetscErrorCode MatMatMultSymbolic_SeqAIJ_SeqAIJ_BTHeap(Mat,Mat,PetscReal,Mat*);
 PETSC_INTERN PetscErrorCode MatMatMultSymbolic_SeqAIJ_SeqAIJ_RowMerge(Mat,Mat,PetscReal,Mat*);
+PETSC_INTERN PetscErrorCode MatMatMultSymbolic_SeqAIJ_SeqAIJ_LLCondensed(Mat,Mat,PetscReal,Mat*);
+#if defined(PETSC_HAVE_HYPRE)
+PETSC_INTERN PetscErrorCode MatMatMultSymbolic_AIJ_AIJ_wHYPRE(Mat,Mat,PetscReal,Mat*);
+#endif
 PETSC_INTERN PetscErrorCode MatMatMult_SeqAIJ_SeqAIJ_Combined(Mat,Mat,PetscReal,Mat*);
 PETSC_INTERN PetscErrorCode MatMatMultNumeric_SeqAIJ_SeqAIJ(Mat,Mat,Mat);
+PETSC_INTERN PetscErrorCode MatMatMultNumeric_SeqAIJ_SeqAIJ_Sorted(Mat,Mat,Mat);
 PETSC_INTERN PetscErrorCode MatMatMultNumeric_SeqDense_SeqAIJ(Mat,Mat,Mat);
 PETSC_INTERN PetscErrorCode MatMatMultNumeric_SeqAIJ_SeqAIJ_Scalable(Mat,Mat,Mat);
+PETSC_INTERN PetscErrorCode MatMatMultNumeric_SeqAIJ_SeqAIJ_Combined(Mat,Mat,Mat);
 
 PETSC_INTERN PetscErrorCode MatPtAP_SeqAIJ_SeqAIJ(Mat,Mat,MatReuse,PetscReal,Mat*);
 PETSC_INTERN PetscErrorCode MatPtAPSymbolic_SeqAIJ_SeqAIJ_SparseAxpy(Mat,Mat,PetscReal,Mat*);
@@ -317,6 +326,7 @@ PETSC_INTERN PetscErrorCode MatMatMatMult_SeqAIJ_SeqAIJ_SeqAIJ(Mat,Mat,Mat,MatRe
 PETSC_INTERN PetscErrorCode MatMatMatMultSymbolic_SeqAIJ_SeqAIJ_SeqAIJ(Mat,Mat,Mat,PetscReal,Mat*);
 PETSC_INTERN PetscErrorCode MatMatMatMultNumeric_SeqAIJ_SeqAIJ_SeqAIJ(Mat,Mat,Mat,Mat);
 
+PETSC_INTERN PetscErrorCode MatSetRandomSkipColumnRange_SeqAIJ_Private(Mat,PetscInt,PetscInt,PetscRandom);
 PETSC_INTERN PetscErrorCode MatSetValues_SeqAIJ(Mat,PetscInt,const PetscInt[],PetscInt,const PetscInt[],const PetscScalar[],InsertMode);
 PETSC_INTERN PetscErrorCode MatGetRow_SeqAIJ(Mat,PetscInt,PetscInt*,PetscInt**,PetscScalar**);
 PETSC_INTERN PetscErrorCode MatRestoreRow_SeqAIJ(Mat,PetscInt,PetscInt*,PetscInt**,PetscScalar**);
@@ -342,8 +352,10 @@ PETSC_INTERN PetscErrorCode MatSeqAIJCheckInode_FactorLU(Mat);
 PETSC_INTERN PetscErrorCode MatAXPYGetPreallocation_SeqAIJ(Mat,Mat,PetscInt*);
 
 PETSC_INTERN PetscErrorCode MatMatMatMult_Transpose_AIJ_AIJ(Mat,Mat,Mat,MatReuse,PetscReal,Mat*);
+#if defined(PETSC_HAVE_MATLAB_ENGINE)
 PETSC_EXTERN PetscErrorCode MatlabEnginePut_SeqAIJ(PetscObject,void*);
 PETSC_EXTERN PetscErrorCode MatlabEngineGet_SeqAIJ(PetscObject,void*);
+#endif
 PETSC_INTERN PetscErrorCode MatConvert_SeqAIJ_SeqSBAIJ(Mat,MatType,MatReuse,Mat*);
 PETSC_INTERN PetscErrorCode MatConvert_SeqAIJ_SeqBAIJ(Mat,MatType,MatReuse,Mat*);
 PETSC_INTERN PetscErrorCode MatConvert_SeqAIJ_SeqDense(Mat,MatType,MatReuse,Mat*);
@@ -368,7 +380,10 @@ PETSC_INTERN PetscErrorCode MatSetSeqMat_SeqAIJ(Mat,IS,IS,MatStructure,Mat);
 PETSC_INTERN PetscErrorCode MatDestroySubMatrix_Private(Mat_SubSppt*);
 PETSC_INTERN PetscErrorCode MatDestroySubMatrix_SeqAIJ(Mat);
 PETSC_INTERN PetscErrorCode MatDestroySubMatrix_Dummy(Mat);
+PETSC_INTERN PetscErrorCode MatDestroySubMatrices_Dummy(PetscInt, Mat*[]);
 PETSC_INTERN PetscErrorCode MatCreateSubMatrix_SeqAIJ(Mat,IS,IS,PetscInt,MatReuse,Mat*);
+
+PETSC_INTERN PetscErrorCode MatSeqAIJCompactOutExtraColumns_SeqAIJ(Mat,ISLocalToGlobalMapping*);
 
 /*
     PetscSparseDenseMinusDot - The inner kernel of triangular solves and Gauss-Siedel smoothing. \sum_i xv[i] * r[xi[i]] for CSR storage

@@ -17,15 +17,15 @@ int main(int argc, char **argv)
   nfaces      = 3;
   interpolate = PETSC_TRUE;
   ierr = PetscOptionsBegin(PETSC_COMM_WORLD,NULL,"ex20",NULL);CHKERRQ(ierr);
-  ierr = PetscOptionsInt("-dim","domain dimension",NULL,dim,&dim,NULL);CHKERRQ(ierr);
-  ierr = PetscOptionsInt("-nfaces","number of faces per dimension",NULL,nfaces,&nfaces,NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsRangeInt("-dim","domain dimension",NULL,dim,&dim,NULL,1,3);CHKERRQ(ierr);
+  ierr = PetscOptionsBoundedInt("-nfaces","number of faces per dimension",NULL,nfaces,&nfaces,NULL,0);CHKERRQ(ierr);
   ierr = PetscOptionsEnd();CHKERRQ(ierr);
   faces[0] = faces[1] = faces[2] = nfaces;
   ierr = DMPlexCreateBoxMesh(PETSC_COMM_WORLD,dim,PETSC_TRUE,faces,NULL,NULL,NULL,interpolate,&dm);CHKERRQ(ierr);
   ierr = PetscObjectSetName((PetscObject)dm,"Pre Adaptation Mesh");CHKERRQ(ierr);
   ierr = DMViewFromOptions(dm,NULL,"-pre_adapt_dm_view");CHKERRQ(ierr);
   ierr = DMPlexGetHeightStratum(dm,0,&cStart,&cEnd);CHKERRQ(ierr);
-  ierr = DMLabelCreate("adapt",&adaptLabel);CHKERRQ(ierr);
+  ierr = DMLabelCreate(PETSC_COMM_SELF,"adapt",&adaptLabel);CHKERRQ(ierr);
   ierr = DMLabelSetDefaultValue(adaptLabel,DM_ADAPT_COARSEN);CHKERRQ(ierr);
   if (cEnd > cStart) {ierr = DMLabelSetValue(adaptLabel,cStart,DM_ADAPT_REFINE);CHKERRQ(ierr);}
   ierr = DMAdaptLabel(dm,adaptLabel,&dmAdapt);CHKERRQ(ierr);

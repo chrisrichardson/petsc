@@ -15,7 +15,6 @@ static PetscBool MatMFFDPackageInitialized = PETSC_FALSE;
 
   Level: developer
 
-.keywords: Petsc, destroy, package
 .seealso: PetscFinalize(), MatCreateMFFD(), MatCreateSNESMF()
 @*/
 PetscErrorCode  MatMFFDFinalizePackage(void)
@@ -31,12 +30,10 @@ PetscErrorCode  MatMFFDFinalizePackage(void)
 
 /*@C
   MatMFFDInitializePackage - This function initializes everything in the MatMFFD package. It is called
-  from PetscDLLibraryRegister() when using dynamic libraries, and on the first call to MatCreate_MFFD()
-  when using static libraries.
+  from MatInitializePackage().
 
   Level: developer
 
-.keywords: Vec, initialize, package
 .seealso: PetscInitialize()
 @*/
 PetscErrorCode  MatMFFDInitializePackage(void)
@@ -186,8 +183,6 @@ $     MatMFFDSetType(mfctx,"my_h")
    or at runtime via the option
 $     -mat_mffd_type my_h
 
-.keywords: MatMFFD, register
-
 .seealso: MatMFFDRegisterAll(), MatMFFDRegisterDestroy()
  @*/
 PetscErrorCode  MatMFFDRegister(const char sname[],PetscErrorCode (*function)(MatMFFD))
@@ -253,6 +248,11 @@ static PetscErrorCode MatView_MFFD(Mat J,PetscViewer viewer)
     } else {
       ierr = PetscViewerASCIIPrintf(viewer,"Using %s compute h routine\n",((PetscObject)ctx)->type_name);CHKERRQ(ierr);
     }
+#if defined(PETSC_USE_COMPLEX)
+    if (ctx->usecomplex) {
+      ierr = PetscViewerASCIIPrintf(viewer,"Using Lyness complex number trick to compute the matrix-vector product\n");CHKERRQ(ierr);
+    }
+#endif
     if (ctx->ops->view) {
       ierr = (*ctx->ops->view)(ctx,viewer);CHKERRQ(ierr);
     }
@@ -352,6 +352,10 @@ static PetscErrorCode MatMult_MFFD(Mat mat,Vec a,Vec y)
   }
   ctx->ncurrenth++;
 
+#if defined(PETSC_USE_COMPLEX)
+  if (ctx->usecomplex) h = PETSC_i*h;
+#endif
+  
   /* w = u + ha */
   if (ctx->drscale) {
     ierr = VecPointwiseMult(ctx->drscale,a,U);CHKERRQ(ierr);
@@ -366,12 +370,23 @@ static PetscErrorCode MatMult_MFFD(Mat mat,Vec a,Vec y)
   }
   ierr = (*ctx->func)(ctx->funcctx,w,y);CHKERRQ(ierr);
 
+#if defined(PETSC_USE_COMPLEX)  
+  if (ctx->usecomplex) {
+    ierr = VecImaginaryPart(y);CHKERRQ(ierr);
+    h    = PetscImaginaryPart(h);
+  } else {
+    ierr = VecAXPY(y,-1.0,F);CHKERRQ(ierr);
+  }
+#else
   ierr = VecAXPY(y,-1.0,F);CHKERRQ(ierr);
+#endif
   ierr = VecScale(y,1.0/h);CHKERRQ(ierr);
 
+  /* This "if" prevents PETSc from erroring when the mat is rectangular */
   if ((ctx->vshift != 0.0) || (ctx->vscale != 1.0)) {
     ierr = VecAXPBY(y,ctx->vshift,ctx->vscale,a);CHKERRQ(ierr);
   }
+
   if (ctx->dlscale) {
     ierr = VecPointwiseMult(y,ctx->dlscale,y);CHKERRQ(ierr);
   }
@@ -506,11 +521,11 @@ PETSC_EXTERN PetscErrorCode MatMFFDSetBase_MFFD(Mat J,Vec U,Vec F)
   ierr = MatMFFDResetHHistory(J);CHKERRQ(ierr);
   if (!ctx->current_u) {
     ierr = VecDuplicate(U,&ctx->current_u);CHKERRQ(ierr);
-    ierr = VecLockPush(ctx->current_u);CHKERRQ(ierr);
+    ierr = VecLockReadPush(ctx->current_u);CHKERRQ(ierr);
   }
-  ierr = VecLockPop(ctx->current_u);CHKERRQ(ierr);
+  ierr = VecLockReadPop(ctx->current_u);CHKERRQ(ierr);
   ierr = VecCopy(U,ctx->current_u);CHKERRQ(ierr);
-  ierr = VecLockPush(ctx->current_u);CHKERRQ(ierr);
+  ierr = VecLockReadPush(ctx->current_u);CHKERRQ(ierr);
   if (F) {
     if (ctx->current_f_allocated) {ierr = VecDestroy(&ctx->current_f);CHKERRQ(ierr);}
     ctx->current_f           = F;
@@ -555,8 +570,6 @@ static PetscErrorCode  MatMFFDSetCheckh_MFFD(Mat J,FCN3 fun,void *ectx)
 
    Level: advanced
 
-.keywords: SNES, matrix-free, parameters
-
 .seealso: MatSetFromOptions(), MatCreateSNESMF(), MatCreateMFFD()
 @*/
 PetscErrorCode  MatMFFDSetOptionsPrefix(Mat mat,const char prefix[])
@@ -596,6 +609,9 @@ static PetscErrorCode  MatSetFromOptions_MFFD(PetscOptionItems *PetscOptionsObje
   if (flg) {
     ierr = MatMFFDSetCheckh(mat,MatMFFDCheckPositivity,0);CHKERRQ(ierr);
   }
+#if defined(PETSC_USE_COMPLEX)
+  ierr = PetscOptionsBool("-mat_mffd_complex","Use Lyness complex number trick to compute the matrix-vector product","None",mfctx->usecomplex,&mfctx->usecomplex,NULL);CHKERRQ(ierr);
+#endif
   if (mfctx->ops->setfromoptions) {
     ierr = (*mfctx->ops->setfromoptions)(PetscOptionsObject,mfctx);CHKERRQ(ierr);
   }
@@ -737,8 +753,11 @@ PETSC_EXTERN PetscErrorCode MatCreate_MFFD(Mat A)
 
    Options Database Keys: call MatSetFromOptions() to trigger these
 +  -mat_mffd_type - wp or ds (see MATMFFD_WP or MATMFFD_DS)
--  -mat_mffd_err - square root of estimated relative error in function evaluation
--  -mat_mffd_period - how often h is recomputed, defaults to 1, everytime
+.  -mat_mffd_err - square root of estimated relative error in function evaluation
+.  -mat_mffd_period - how often h is recomputed, defaults to 1, everytime
+.  -mat_mffd_check_positivity - possibly decrease h until U + h*a has only positive values
+-  -mat_mffd_complex - use the Lyness trick with complex numbers to compute the matrix-vector product instead of differencing
+                       (requires real valued functions but that PETSc be configured for complex numbers)
 
 
    Level: advanced
@@ -773,8 +792,6 @@ PETSC_EXTERN PetscErrorCode MatCreate_MFFD(Mat A)
 .  -mat_mffd_unim <umin> - Sets umin (for default PETSc routine that computes h only)
 -  -mat_mffd_check_positivity
 
-.keywords: default, matrix-free, create, matrix
-
 .seealso: MatDestroy(), MatMFFDSetFunctionError(), MatMFFDDSSetUmin(), MatMFFDSetFunction()
           MatMFFDSetHHistory(), MatMFFDResetHHistory(), MatCreateSNESMF(),
           MatMFFDGetH(), MatMFFDRegister(), MatMFFDComputeJacobian()
@@ -805,8 +822,6 @@ PetscErrorCode  MatCreateMFFD(MPI_Comm comm,PetscInt m,PetscInt n,PetscInt M,Pet
 .  h - the differencing step size
 
    Level: advanced
-
-.keywords: SNES, matrix-free, parameters
 
 .seealso: MatCreateSNESMF(),MatMFFDSetHHistory(), MatCreateMFFD(), MATMFFD, MatMFFDResetHHistory()
 @*/
@@ -851,8 +866,6 @@ $     func (void *funcctx, Vec x, Vec f)
 
     If this is not set then it will use the function set with SNESSetFunction() if MatCreateSNESMF() was used.
 
-.keywords: SNES, matrix-free, function
-
 .seealso: MatCreateSNESMF(),MatMFFDGetH(), MatCreateMFFD(), MATMFFD,
           MatMFFDSetHHistory(), MatMFFDResetHHistory(), SNESetFunction()
 @*/
@@ -882,8 +895,6 @@ PetscErrorCode  MatMFFDSetFunction(Mat mat,PetscErrorCode (*func)(void*,Vec,Vec)
     matrix inside your compute Jacobian routine.
     This function is necessary to compute the diagonal of the matrix.
     funci must not contain any MPI call as it is called inside a loop on the local portion of the vector.
-
-.keywords: SNES, matrix-free, function
 
 .seealso: MatCreateSNESMF(),MatMFFDGetH(), MatMFFDSetHHistory(), MatMFFDResetHHistory(), SNESetFunction(), MatGetDiagonal()
 
@@ -915,8 +926,6 @@ PetscErrorCode  MatMFFDSetFunctioni(Mat mat,PetscErrorCode (*funci)(void*,PetscI
     This function is necessary to compute the diagonal of the matrix.
 
 
-.keywords: SNES, matrix-free, function
-
 .seealso: MatCreateSNESMF(),MatMFFDGetH(), MatCreateMFFD(), MATMFFD
           MatMFFDSetHHistory(), MatMFFDResetHHistory(), SNESetFunction(), MatGetDiagonal()
 @*/
@@ -944,8 +953,6 @@ PetscErrorCode  MatMFFDSetFunctioniBase(Mat mat,PetscErrorCode (*func)(void*,Vec
 
    Level: advanced
 
-
-.keywords: SNES, matrix-free, parameters
 
 .seealso: MatCreateSNESMF(),MatMFFDGetH(),
           MatMFFDSetHHistory(), MatMFFDResetHHistory()
@@ -985,8 +992,6 @@ PetscErrorCode  MatMFFDSetPeriod(Mat mat,PetscInt period)
        = error_rel*umin*sign(u'a)*||a||_{1}/||a||^2   else
 .ve
 
-.keywords: SNES, matrix-free, parameters
-
 .seealso: MatCreateSNESMF(),MatMFFDGetH(), MatCreateMFFD(), MATMFFD
           MatMFFDSetHHistory(), MatMFFDResetHHistory()
 @*/
@@ -1018,8 +1023,6 @@ PetscErrorCode  MatMFFDSetFunctionError(Mat mat,PetscReal error)
    Notes:
    Use MatMFFDResetHHistory() to reset the history counter and collect
    a new batch of differencing parameters, h.
-
-.keywords: SNES, matrix-free, h history, differencing history
 
 .seealso: MatMFFDGetH(), MatCreateSNESMF(),
           MatMFFDResetHHistory(), MatMFFDSetFunctionError()
@@ -1056,8 +1059,6 @@ PetscErrorCode  MatMFFDSetHHistory(Mat J,PetscScalar history[],PetscInt nhistory
 
    Notes:
    Use MatMFFDSetHHistory() to create the original history counter.
-
-.keywords: SNES, matrix-free, h history, differencing history
 
 .seealso: MatMFFDGetH(), MatCreateSNESMF(),
           MatMFFDSetHHistory(), MatMFFDSetFunctionError()

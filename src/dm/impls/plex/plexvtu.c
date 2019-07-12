@@ -129,6 +129,7 @@ PetscErrorCode DMPlexVTKWriteAll_VTU(DM dm,PetscViewer viewer)
   PetscBool                localized;
   PieceInfo                piece,*gpiece = NULL;
   void                     *buffer = NULL;
+  const char               *byte_order = PetscBinaryBigEndian() ? "BigEndian" : "LittleEndian";
 
   PetscFunctionBegin;
   ierr = PetscObjectGetComm((PetscObject)dm,&comm);CHKERRQ(ierr);
@@ -141,11 +142,7 @@ PetscErrorCode DMPlexVTKWriteAll_VTU(DM dm,PetscViewer viewer)
 
   ierr = PetscFOpen(comm,vtk->filename,"wb",&fp);CHKERRQ(ierr);
   ierr = PetscFPrintf(comm,fp,"<?xml version=\"1.0\"?>\n");CHKERRQ(ierr);
-#if defined(PETSC_WORDS_BIGENDIAN)
-  ierr = PetscFPrintf(comm,fp,"<VTKFile type=\"UnstructuredGrid\" version=\"0.1\" byte_order=\"BigEndian\">\n");CHKERRQ(ierr);
-#else
-  ierr = PetscFPrintf(comm,fp,"<VTKFile type=\"UnstructuredGrid\" version=\"0.1\" byte_order=\"LittleEndian\">\n");CHKERRQ(ierr);
-#endif
+  ierr = PetscFPrintf(comm,fp,"<VTKFile type=\"UnstructuredGrid\" version=\"0.1\" byte_order=\"%s\">\n", byte_order);CHKERRQ(ierr);
   ierr = PetscFPrintf(comm,fp,"  <UnstructuredGrid>\n");CHKERRQ(ierr);
 
   ierr = DMGetCoordinateDim(dm, &dimEmbed);CHKERRQ(ierr);
@@ -244,7 +241,7 @@ PetscErrorCode DMPlexVTKWriteAll_VTU(DM dm,PetscViewer viewer)
             ierr = PetscSectionGetFieldDof(dm->defaultSection,cStart,field,&fbs);CHKERRQ(ierr);
             ierr = PetscSectionGetFieldName(dm->defaultSection,field,&fieldname);CHKERRQ(ierr);
           } else fbs = bs;      /* Say we have one field with 'bs' components */
-          ierr = DMGetField(dm,field,&f);CHKERRQ(ierr);
+          ierr = DMGetField(dm,field,NULL,&f);CHKERRQ(ierr);
           ierr = PetscObjectGetClassId(f,&fClass);CHKERRQ(ierr);
           if (fClass == PETSCFV_CLASSID) {
             fv = (PetscFV) f;
@@ -465,10 +462,11 @@ PetscErrorCode DMPlexVTKWriteAll_VTU(DM dm,PetscViewer viewer)
                 if ((closure[v] >= vStart) && (closure[v] < vEnd)) {
                   PetscScalar *xpoint;
 
-                  ierr = DMPlexPointLocalRead(dm,v,x,&xpoint);CHKERRQ(ierr);
+                  ierr = DMPlexPointLocalRead(dm,closure[v],x,&xpoint);CHKERRQ(ierr);
                   y[cnt + off++] = xpoint[i];
                 }
               }
+              cnt += off;
               ierr = DMPlexRestoreTransitiveClosure(dm, c, PETSC_TRUE, &closureSize, &closure);CHKERRQ(ierr);
             }
           }

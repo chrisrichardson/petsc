@@ -30,7 +30,9 @@ PETSC_EXTERN PetscErrorCode MatCreate_MPIAIJSELL(Mat);
 #if defined PETSC_HAVE_MKL_SPARSE
 PETSC_EXTERN PetscErrorCode MatCreate_SeqAIJMKL(Mat);
 PETSC_EXTERN PetscErrorCode MatCreate_MPIAIJMKL(Mat);
+#endif
 
+#if defined PETSC_HAVE_MKL_SPARSE_OPTIMIZE
 PETSC_EXTERN PetscErrorCode MatCreate_SeqBAIJMKL(Mat);
 PETSC_EXTERN PetscErrorCode MatCreate_MPIBAIJMKL(Mat);
 #endif
@@ -67,14 +69,13 @@ PETSC_EXTERN PetscErrorCode MatCreate_Dummy(Mat);
 PETSC_EXTERN PetscErrorCode MatCreate_HYPRE(Mat);
 #endif
 
+PETSC_EXTERN PetscErrorCode MatCreate_ConstantDiagonal(Mat);
 /*@C
   MatRegisterAll - Registers all of the matrix types in PETSc
 
   Not Collective
 
   Level: advanced
-
-.keywords: KSP, register, all
 
 .seealso:  MatRegister()
 @*/
@@ -112,7 +113,9 @@ PetscErrorCode  MatRegisterAll(void)
   ierr = MatRegisterRootName(MATAIJMKL, MATSEQAIJMKL,MATMPIAIJMKL);CHKERRQ(ierr);
   ierr = MatRegister(MATMPIAIJMKL,      MatCreate_MPIAIJMKL);CHKERRQ(ierr);
   ierr = MatRegister(MATSEQAIJMKL,      MatCreate_SeqAIJMKL);CHKERRQ(ierr);
+#endif
 
+#if defined PETSC_HAVE_MKL_SPARSE_OPTIMIZE
   ierr = MatRegisterRootName(MATBAIJMKL,MATSEQBAIJMKL,MATMPIBAIJMKL);CHKERRQ(ierr);
   ierr = MatRegister(MATMPIBAIJMKL,      MatCreate_MPIBAIJMKL);CHKERRQ(ierr);
   ierr = MatRegister(MATSEQBAIJMKL,      MatCreate_SeqBAIJMKL);CHKERRQ(ierr);
@@ -164,6 +167,8 @@ PetscErrorCode  MatRegisterAll(void)
 
   ierr = MatRegister(MATPREALLOCATOR,   MatCreate_Preallocator);CHKERRQ(ierr);
   ierr = MatRegister(MATDUMMY,          MatCreate_Dummy);CHKERRQ(ierr);
+
+  ierr = MatRegister(MATCONSTANTDIAGONAL,MatCreate_ConstantDiagonal);CHKERRQ(ierr);
 
 #if defined PETSC_HAVE_HYPRE
   ierr = MatRegister(MATHYPRE,          MatCreate_HYPRE);CHKERRQ(ierr);

@@ -40,15 +40,6 @@ static PetscErrorCode PCSetFromOptions_LU(PetscOptionItems *PetscOptionsObject,P
   PetscFunctionReturn(0);
 }
 
-static PetscErrorCode PCView_LU(PC pc,PetscViewer viewer)
-{
-  PetscErrorCode ierr;
-
-  PetscFunctionBegin;
-  ierr = PCView_Factor(pc,viewer);CHKERRQ(ierr);
-  PetscFunctionReturn(0);
-}
-
 static PetscErrorCode PCSetUp_LU(PC pc)
 {
   PetscErrorCode         ierr;
@@ -62,20 +53,24 @@ static PetscErrorCode PCSetUp_LU(PC pc)
 
   ierr = MatSetErrorIfFailure(pc->pmat,pc->erroriffailure);CHKERRQ(ierr);
   if (dir->hdr.inplace) {
-    if (dir->row && dir->col && dir->row != dir->col) {ierr = ISDestroy(&dir->row);CHKERRQ(ierr);}
-    ierr = ISDestroy(&dir->col);CHKERRQ(ierr);
-    ierr = MatGetOrdering(pc->pmat,((PC_Factor*)dir)->ordering,&dir->row,&dir->col);CHKERRQ(ierr);
-    if (dir->row) {
-      ierr = PetscLogObjectParent((PetscObject)pc,(PetscObject)dir->row);CHKERRQ(ierr);
-      ierr = PetscLogObjectParent((PetscObject)pc,(PetscObject)dir->col);CHKERRQ(ierr);
-    }
-    ierr = MatLUFactor(pc->pmat,dir->row,dir->col,&((PC_Factor*)dir)->info);CHKERRQ(ierr);
-    ierr = MatFactorGetError(pc->pmat,&err);CHKERRQ(ierr);
-    if (err) { /* Factor() fails */
-      pc->failedreason = (PCFailedReason)err;
-      PetscFunctionReturn(0);
-    }
+    MatFactorType ftype;
 
+    ierr = MatGetFactorType(pc->pmat, &ftype);CHKERRQ(ierr);
+    if (ftype == MAT_FACTOR_NONE) {
+      if (dir->row && dir->col && dir->row != dir->col) {ierr = ISDestroy(&dir->row);CHKERRQ(ierr);}
+      ierr = ISDestroy(&dir->col);CHKERRQ(ierr);
+      ierr = MatGetOrdering(pc->pmat,((PC_Factor*)dir)->ordering,&dir->row,&dir->col);CHKERRQ(ierr);
+      if (dir->row) {
+        ierr = PetscLogObjectParent((PetscObject)pc,(PetscObject)dir->row);CHKERRQ(ierr);
+        ierr = PetscLogObjectParent((PetscObject)pc,(PetscObject)dir->col);CHKERRQ(ierr);
+      }
+      ierr = MatLUFactor(pc->pmat,dir->row,dir->col,&((PC_Factor*)dir)->info);CHKERRQ(ierr);
+      ierr = MatFactorGetError(pc->pmat,&err);CHKERRQ(ierr);
+      if (err) { /* Factor() fails */
+        pc->failedreason = (PCFailedReason)err;
+        PetscFunctionReturn(0);
+      }
+    }
     ((PC_Factor*)dir)->fact = pc->pmat;
   } else {
     MatInfo info;
@@ -224,8 +219,6 @@ static PetscErrorCode PCApplyTranspose_LU(PC pc,Vec x,Vec y)
 
    Level: beginner
 
-   Concepts: LU factorization, direct solver
-
    Notes:
     Usually this will compute an "exact" solution in one iteration and does
           not need a Krylov method (i.e. you can use -ksp_type preonly, or
@@ -270,7 +263,7 @@ PETSC_EXTERN PetscErrorCode PCCreate_LU(PC pc)
   pc->ops->applytranspose    = PCApplyTranspose_LU;
   pc->ops->setup             = PCSetUp_LU;
   pc->ops->setfromoptions    = PCSetFromOptions_LU;
-  pc->ops->view              = PCView_LU;
+  pc->ops->view              = PCView_Factor;
   pc->ops->applyrichardson   = 0;
   ierr = PetscObjectComposeFunction((PetscObject)pc,"PCFactorReorderForNonzeroDiagonal_C",PCFactorReorderForNonzeroDiagonal_LU);CHKERRQ(ierr);
   PetscFunctionReturn(0);

@@ -162,8 +162,7 @@ static PetscErrorCode  SNESLineSearchApply_BT(SNESLineSearch linesearch)
       ierr = PetscViewerASCIISubtractTab(monitor,((PetscObject)linesearch)->tablevel);CHKERRQ(ierr);
     }
     if (lambda <= minlambda) {
-      ierr = SNESLineSearchSetReason(linesearch, SNES_LINESEARCH_FAILED_REDUCT);CHKERRQ(ierr);
-      PetscFunctionReturn(0);
+      SNESCheckFunctionNorm(snes,g);
     }
     lambda = .5*lambda;
   }
@@ -447,8 +446,6 @@ static PetscErrorCode SNESLineSearchSetFromOptions_BT(PetscOptionItems *PetscOpt
    Notes:
    This line search is taken from "Numerical Methods for Unconstrained
    Optimization and Nonlinear Equations" by Dennis and Schnabel, page 325.
-
-.keywords: SNES, SNESLineSearch, damping
 
 .seealso: SNESLineSearchCreate(), SNESLineSearchSetType()
 M*/

@@ -9,7 +9,7 @@
       separate components (DMs) in a DMto build the correct matrix nonzero structure.
 
 
-    Logically Collective on MPI_Comm
+    Logically Collective
 
     Input Parameter:
 +   dm - the composite object
@@ -156,7 +156,7 @@ PetscErrorCode  DMCompositeGetNumberDM(DM dm,PetscInt *nDM)
     DMCompositeGetAccess - Allows one to access the individual packed vectors in their global
        representation.
 
-    Collective on DMComposite
+    Collective on dm
 
     Input Parameters:
 +    dm - the packer object
@@ -208,7 +208,7 @@ PetscErrorCode  DMCompositeGetAccess(DM dm,Vec gvec,...)
         const PetscScalar *array;
         ierr = VecGetArrayRead(gvec,&array);CHKERRQ(ierr);
         ierr = VecPlaceArray(*vec,array+next->rstart);CHKERRQ(ierr);
-        ierr = VecLockPush(*vec);CHKERRQ(ierr);
+        ierr = VecLockReadPush(*vec);CHKERRQ(ierr);
         ierr = VecRestoreArrayRead(gvec,&array);CHKERRQ(ierr);
       } else {
         PetscScalar *array;
@@ -227,7 +227,7 @@ PetscErrorCode  DMCompositeGetAccess(DM dm,Vec gvec,...)
     DMCompositeGetAccessArray - Allows one to access the individual packed vectors in their global
        representation.
 
-    Collective on DMComposite
+    Collective on dm
 
     Input Parameters:
 +    dm - the packer object
@@ -272,7 +272,7 @@ PetscErrorCode  DMCompositeGetAccessArray(DM dm,Vec pvec,PetscInt nwanted,const 
         const PetscScalar *array;
         ierr = VecGetArrayRead(pvec,&array);CHKERRQ(ierr);
         ierr = VecPlaceArray(v,array+link->rstart);CHKERRQ(ierr);
-        ierr = VecLockPush(v);CHKERRQ(ierr);
+        ierr = VecLockReadPush(v);CHKERRQ(ierr);
         ierr = VecRestoreArrayRead(pvec,&array);CHKERRQ(ierr);
       } else {
         PetscScalar *array;
@@ -290,7 +290,7 @@ PetscErrorCode  DMCompositeGetAccessArray(DM dm,Vec pvec,PetscInt nwanted,const 
     DMCompositeGetLocalAccessArray - Allows one to access the individual
     packed vectors in their local representation.
 
-    Collective on DMComposite.
+    Collective on dm.
 
     Input Parameters:
 +    dm - the packer object
@@ -338,7 +338,7 @@ PetscErrorCode  DMCompositeGetLocalAccessArray(DM dm,Vec pvec,PetscInt nwanted,c
         const PetscScalar *array;
         ierr = VecGetArrayRead(pvec,&array);CHKERRQ(ierr);
         ierr = VecPlaceArray(v,array+nlocal);CHKERRQ(ierr);
-        ierr = VecLockPush(v);CHKERRQ(ierr);
+        ierr = VecLockReadPush(v);CHKERRQ(ierr);
         ierr = VecRestoreArrayRead(pvec,&array);CHKERRQ(ierr);
       } else {
         PetscScalar *array;
@@ -359,7 +359,7 @@ PetscErrorCode  DMCompositeGetLocalAccessArray(DM dm,Vec pvec,PetscInt nwanted,c
     DMCompositeRestoreAccess - Returns the vectors obtained with DMCompositeGetAccess()
        representation.
 
-    Collective on DMComposite
+    Collective on dm
 
     Input Parameters:
 +    dm - the packer object
@@ -401,7 +401,7 @@ PetscErrorCode  DMCompositeRestoreAccess(DM dm,Vec gvec,...)
     if (vec) {
       ierr = VecResetArray(*vec);CHKERRQ(ierr);
       if (readonly) {
-        ierr = VecLockPop(*vec);CHKERRQ(ierr);
+        ierr = VecLockReadPop(*vec);CHKERRQ(ierr);
       }
       ierr = DMRestoreGlobalVector(next->dm,vec);CHKERRQ(ierr);
     }
@@ -414,7 +414,7 @@ PetscErrorCode  DMCompositeRestoreAccess(DM dm,Vec gvec,...)
 /*@C
     DMCompositeRestoreAccessArray - Returns the vectors obtained with DMCompositeGetAccessArray()
 
-    Collective on DMComposite
+    Collective on dm
 
     Input Parameters:
 +    dm - the packer object
@@ -450,7 +450,7 @@ PetscErrorCode  DMCompositeRestoreAccessArray(DM dm,Vec pvec,PetscInt nwanted,co
     if (!wanted || i == wanted[wnum]) {
       ierr = VecResetArray(vecs[wnum]);CHKERRQ(ierr);
       if (readonly) {
-        ierr = VecLockPop(vecs[wnum]);CHKERRQ(ierr);
+        ierr = VecLockReadPop(vecs[wnum]);CHKERRQ(ierr);
       }
       ierr = DMRestoreGlobalVector(link->dm,&vecs[wnum]);CHKERRQ(ierr);
       wnum++;
@@ -462,7 +462,7 @@ PetscErrorCode  DMCompositeRestoreAccessArray(DM dm,Vec pvec,PetscInt nwanted,co
 /*@C
     DMCompositeRestoreLocalAccessArray - Returns the vectors obtained with DMCompositeGetLocalAccessArray().
 
-    Collective on DMComposite.
+    Collective on dm.
 
     Input Parameters:
 +    dm - the packer object
@@ -504,7 +504,7 @@ PetscErrorCode  DMCompositeRestoreLocalAccessArray(DM dm,Vec pvec,PetscInt nwant
     if (!wanted || i == wanted[wnum]) {
       ierr = VecResetArray(vecs[wnum]);CHKERRQ(ierr);
       if (readonly) {
-        ierr = VecLockPop(vecs[wnum]);CHKERRQ(ierr);
+        ierr = VecLockReadPop(vecs[wnum]);CHKERRQ(ierr);
       }
       ierr = DMRestoreLocalVector(link->dm,&vecs[wnum]);CHKERRQ(ierr);
       wnum++;
@@ -516,7 +516,7 @@ PetscErrorCode  DMCompositeRestoreLocalAccessArray(DM dm,Vec pvec,PetscInt nwant
 /*@C
     DMCompositeScatter - Scatters from a global packed vector into its individual local vectors
 
-    Collective on DMComposite
+    Collective on dm
 
     Input Parameters:
 +    dm - the packer object
@@ -579,7 +579,7 @@ PetscErrorCode  DMCompositeScatter(DM dm,Vec gvec,...)
 /*@
     DMCompositeScatterArray - Scatters from a global packed vector into its individual local vectors
 
-    Collective on DMComposite
+    Collective on dm
 
     Input Parameters:
 +    dm - the packer object
@@ -635,7 +635,7 @@ PetscErrorCode  DMCompositeScatterArray(DM dm,Vec gvec,Vec *lvecs)
 /*@C
     DMCompositeGather - Gathers into a global packed vector from its individual local vectors
 
-    Collective on DMComposite
+    Collective on dm
 
     Input Parameter:
 +    dm - the packer object
@@ -696,7 +696,7 @@ PetscErrorCode  DMCompositeGather(DM dm,InsertMode imode,Vec gvec,...)
 /*@
     DMCompositeGatherArray - Gathers into a global packed vector from its individual local vectors
 
-    Collective on DMComposite
+    Collective on dm
 
     Input Parameter:
 +    dm - the packer object
@@ -752,7 +752,7 @@ PetscErrorCode  DMCompositeGatherArray(DM dm,InsertMode imode,Vec gvec,Vec *lvec
 /*@
     DMCompositeAddDM - adds a DM vector to a DMComposite
 
-    Collective on DMComposite
+    Collective on dm
 
     Input Parameter:
 +    dmc - the DMComposite (packer) object
@@ -1021,7 +1021,7 @@ PetscErrorCode  DMCompositeGetLocalISs(DM dm,IS **is)
 /*@C
     DMCompositeGetGlobalISs - Gets the index sets for each composed object
 
-    Collective on DMComposite
+    Collective on dm
 
     Input Parameter:
 .    dm - the packer object
@@ -1069,16 +1069,19 @@ PetscErrorCode  DMCompositeGetGlobalISs(DM dm,IS *is[])
 
   /* loop over packed objects, handling one at at time */
   while (next) {
+    PetscDS prob;
+
     ierr = ISCreateStride(PetscObjectComm((PetscObject)dm),next->n,next->grstart,1,&(*is)[cnt]);CHKERRQ(ierr);
-    if (dm->prob) {
+    ierr = DMGetDS(dm, &prob);CHKERRQ(ierr);
+    if (prob) {
       MatNullSpace space;
       Mat          pmat;
       PetscObject  disc;
       PetscInt     Nf;
 
-      ierr = PetscDSGetNumFields(dm->prob, &Nf);CHKERRQ(ierr);
+      ierr = PetscDSGetNumFields(prob, &Nf);CHKERRQ(ierr);
       if (cnt < Nf) {
-        ierr = PetscDSGetDiscretization(dm->prob, cnt, &disc);CHKERRQ(ierr);
+        ierr = PetscDSGetDiscretization(prob, cnt, &disc);CHKERRQ(ierr);
         ierr = PetscObjectQuery(disc, "nullspace", (PetscObject*) &space);CHKERRQ(ierr);
         if (space) {ierr = PetscObjectCompose((PetscObject) (*is)[cnt], "nullspace", (PetscObject) space);CHKERRQ(ierr);}
         ierr = PetscObjectQuery(disc, "nearnullspace", (PetscObject*) &space);CHKERRQ(ierr);
@@ -1788,7 +1791,6 @@ PETSC_EXTERN PetscErrorCode DMCreate_Composite(DM p)
   PetscFunctionBegin;
   ierr          = PetscNewLog(p,&com);CHKERRQ(ierr);
   p->data       = com;
-  ierr          = PetscObjectChangeTypeName((PetscObject)p,"DMComposite");CHKERRQ(ierr);
   com->n        = 0;
   com->nghost   = 0;
   com->next     = NULL;
@@ -1822,7 +1824,7 @@ PETSC_EXTERN PetscErrorCode DMCreate_Composite(DM p)
     DMCompositeCreate - Creates a vector packer, used to generate "composite"
       vectors made up of several subvectors.
 
-    Collective on MPI_Comm
+    Collective
 
     Input Parameter:
 .   comm - the processors that will share the global vector

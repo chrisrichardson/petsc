@@ -582,7 +582,7 @@ static PetscErrorCode AssembleA_Elasticity(Mat A,DM elas_da,DM properties_da,Vec
       prop_nu = props[ej][ei].nu;
 
       /* initialise element stiffness matrix */
-      ierr = PetscMemzero(Ae,sizeof(PetscScalar)*NODES_PER_EL*U_DOFS*NODES_PER_EL*U_DOFS);CHKERRQ(ierr);
+      ierr = PetscMemzero(Ae,sizeof(Ae));CHKERRQ(ierr);
 
       /* form element stiffness matrix */
       FormStressOperatorQ1(Ae,el_coords,prop_E,prop_nu);
@@ -661,7 +661,7 @@ static PetscErrorCode AssembleF_Elasticity(Vec F,DM elas_da,DM properties_da,Vec
       prop_fy = props[ej][ei].fy;
 
       /* initialise element stiffness matrix */
-      ierr = PetscMemzero(Fe,sizeof(PetscScalar)*NODES_PER_EL*U_DOFS);CHKERRQ(ierr);
+      ierr = PetscMemzero(Fe,sizeof(Fe));CHKERRQ(ierr);
 
       /* form element stiffness matrix */
       FormMomentumRhsQ1(Fe,el_coords,prop_fx,prop_fy);
@@ -981,7 +981,7 @@ static PetscErrorCode solve_elasticity_2d(PetscInt mx,PetscInt my)
     /* push XX back into X */
     ierr = DMDABCApplyCompression(elas_da,NULL,X);CHKERRQ(ierr);
 
-    ierr = VecScatterCreateWithData(XX,NULL,X,is,&scat);CHKERRQ(ierr);
+    ierr = VecScatterCreate(XX,NULL,X,is,&scat);CHKERRQ(ierr);
     ierr = VecScatterBegin(scat,XX,X,INSERT_VALUES,SCATTER_FORWARD);CHKERRQ(ierr);
     ierr = VecScatterEnd(scat,XX,X,INSERT_VALUES,SCATTER_FORWARD);CHKERRQ(ierr);
     ierr = VecScatterDestroy(&scat);CHKERRQ(ierr);
@@ -1247,7 +1247,7 @@ static PetscErrorCode DMDABCApplySymmetricCompression(DM elas_da,Mat A,Vec f,IS 
   /* get new vector */
   ierr = MatCreateVecs(*AA,NULL,ff);CHKERRQ(ierr);
 
-  ierr = VecScatterCreateWithData(f,is,*ff,NULL,&scat);CHKERRQ(ierr);
+  ierr = VecScatterCreate(f,is,*ff,NULL,&scat);CHKERRQ(ierr);
   ierr = VecScatterBegin(scat,f,*ff,INSERT_VALUES,SCATTER_FORWARD);CHKERRQ(ierr);
   ierr = VecScatterEnd(scat,f,*ff,INSERT_VALUES,SCATTER_FORWARD);CHKERRQ(ierr);
 
@@ -1302,7 +1302,7 @@ static PetscErrorCode DMDABCApplySymmetricCompression(DM elas_da,Mat A,Vec f,IS 
    test:
       suffix: 4
       nsize: 4
-      args: -elas_ksp_monitor_short -elas_ksp_converged_reason -elas_ksp_type cg -elas_ksp_norm_type unpreconditioned -mx 40 -my 40 -c_str 2 -brick_E 1,1e-6,1e-2 -brick_nu .3,.2,.4 -brick_span 8 -elas_mg_levels_ksp_type chebyshev -elas_pc_type ml -elas_mg_levels_ksp_chebyshev_esteig 0,0.2,0,1.1 -elas_mg_levels_pc_type pbjacobi -elas_mg_levels_ksp_max_it 2 -use_nonsymbc -elas_pc_ml_nullspace user
+      args: -elas_ksp_monitor_short -elas_ksp_converged_reason -elas_ksp_type cg -elas_ksp_norm_type unpreconditioned -mx 40 -my 40 -c_str 2 -brick_E 1,1e-6,1e-2 -brick_nu .3,.2,.4 -brick_span 8 -elas_mg_levels_ksp_type chebyshev -elas_pc_type ml -elas_mg_levels_ksp_chebyshev_esteig 0,0.2,0,1.1 -elas_mg_levels_pc_type pbjacobi -elas_mg_levels_ksp_max_it 3 -use_nonsymbc -elas_pc_ml_nullspace user
       requires: ml
 
    test:
@@ -1358,7 +1358,7 @@ static PetscErrorCode DMDABCApplySymmetricCompression(DM elas_da,Mat A,Vec f,IS 
    test:
       nsize: 4
       suffix: bddc_subdomainjump
-      args: -mx 40 -my 40 -elas_ksp_monitor_short -no_view -c_str 2 -brick_E 1,1000 -brick_nu 0.4,0.2 -brick_span 20  -elas_ksp_type cg -elas_pc_type bddc -elas_pc_bddc_monolithic -dm_mat_type is -elas_pc_is_use_stiffness_scaling -elas_ksp_norm_type natural
+      args: -mx 40 -my 40 -elas_ksp_monitor_short -no_view -c_str 2 -brick_E 1,1000 -brick_nu 0.4,0.2 -brick_span 20  -elas_ksp_type cg -elas_pc_type bddc -elas_pc_bddc_monolithic -dm_mat_type is -elas_pc_is_use_stiffness_scaling -elas_ksp_norm_type natural 
 
    test:
       nsize: 9

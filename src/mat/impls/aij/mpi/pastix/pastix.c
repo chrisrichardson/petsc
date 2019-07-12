@@ -108,11 +108,11 @@ PetscErrorCode MatConvertToCSC(Mat A,PetscBool valOnly,PetscInt *n,PetscInt **co
     ierr = PetscMalloc1(nnz,values);CHKERRQ(ierr);
 
     if (isSBAIJ || isSeqSBAIJ || isMpiSBAIJ) {
-      ierr = PetscMemcpy (*colptr, rowptr, ((*n)+1)*sizeof(PetscInt));CHKERRQ(ierr);
+      ierr = PetscArraycpy (*colptr, rowptr, (*n)+1);CHKERRQ(ierr);
       for (i = 0; i < *n+1; i++) (*colptr)[i] += base;
-      ierr = PetscMemcpy (*row, col, (nnz)*sizeof(PetscInt));CHKERRQ(ierr);
+      ierr = PetscArraycpy (*row, col, nnz);CHKERRQ(ierr);
       for (i = 0; i < nnz; i++) (*row)[i] += base;
-      ierr = PetscMemcpy (*values, rvalues, (nnz)*sizeof(PetscScalar));CHKERRQ(ierr);
+      ierr = PetscArraycpy (*values, rvalues, nnz);CHKERRQ(ierr);
     } else {
       ierr = PetscMalloc1(*n,&colcount);CHKERRQ(ierr);
 
@@ -381,8 +381,8 @@ PetscErrorCode MatFactorNumeric_PaStiX(Mat F,Mat A,const MatFactorInfo *info)
       ierr = VecCreateSeq(PETSC_COMM_SELF,A->cmap->N,&lu->b_seq);CHKERRQ(ierr);
       ierr = ISCreateStride(PETSC_COMM_SELF,A->cmap->N,0,1,&is_iden);CHKERRQ(ierr);
       ierr = MatCreateVecs(A,NULL,&b);CHKERRQ(ierr);
-      ierr = VecScatterCreateWithData(b,is_iden,lu->b_seq,is_iden,&lu->scat_rhs);CHKERRQ(ierr);
-      ierr = VecScatterCreateWithData(lu->b_seq,is_iden,b,is_iden,&lu->scat_sol);CHKERRQ(ierr);
+      ierr = VecScatterCreate(b,is_iden,lu->b_seq,is_iden,&lu->scat_rhs);CHKERRQ(ierr);
+      ierr = VecScatterCreate(lu->b_seq,is_iden,b,is_iden,&lu->scat_sol);CHKERRQ(ierr);
       ierr = ISDestroy(&is_iden);CHKERRQ(ierr);
       ierr = VecDestroy(&b);CHKERRQ(ierr);
     }

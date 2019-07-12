@@ -5,42 +5,70 @@ from distutils.sysconfig import parse_makefile
 import sys
 import logging
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
-from cmakegen import Mistakes, stripsplit, AUTODIRS, SKIPDIRS
-from cmakegen import defaultdict # collections.defaultdict, with fallback for python-2.4
+from collections import defaultdict
 
-PKGS = 'sys vec mat dm ksp snes ts tao'.split()
-LANGS = dict(c='C', cxx='CXX', cu='CU', F='F', F90='F90')
+AUTODIRS = set('ftn-auto ftn-custom f90-custom'.split()) # Automatically recurse into these, if they exist
+SKIPDIRS = set('benchmarks'.split())                     # Skip these during the build
+NOWARNDIRS = set('tests tutorials'.split())              # Do not warn about mismatch in these
 
-try:
-    all([True, True])
-except NameError:               # needs python-2.5
-    def all(iterable):
-        for i in iterable:
-            if not i:
-                return False
-        return True
+def pathsplit(path):
+    """Recursively split a path, returns a tuple"""
+    stem, basename = os.path.split(path)
+    if stem == '':
+        return (basename,)
+    if stem == path:            # fixed point, likely '/'
+        return (path,)
+    return pathsplit(stem) + (basename,)
 
-try:
-    os.path.relpath             # needs python-2.6
-except AttributeError:
-    def _relpath(path, start=os.path.curdir):
-        """Return a relative version of a path"""
+class Mistakes(object):
+    def __init__(self, log, verbose=False):
+        self.mistakes = []
+        self.verbose = verbose
+        self.log = log
 
-        from os.path import curdir, abspath, commonprefix, sep, pardir, join
-        if not path:
-            raise ValueError("no path specified")
+    def compareDirLists(self,root, mdirs, dirs):
+        if NOWARNDIRS.intersection(pathsplit(root)):
+            return
+        smdirs = set(mdirs)
+        sdirs  = set(dirs).difference(AUTODIRS)
+        if not smdirs.issubset(sdirs):
+            self.mistakes.append('Makefile contains directory not on filesystem: %s: %r' % (root, sorted(smdirs - sdirs)))
+        if not self.verbose: return
+        if smdirs != sdirs:
+            from sys import stderr
+            stderr.write('Directory mismatch at %s:\n\t%s: %r\n\t%s: %r\n\t%s: %r\n'
+                         % (root,
+                            'in makefile   ',sorted(smdirs),
+                            'on filesystem ',sorted(sdirs),
+                            'symmetric diff',sorted(smdirs.symmetric_difference(sdirs))))
 
-        start_list = [x for x in abspath(start).split(sep) if x]
-        path_list = [x for x in abspath(path).split(sep) if x]
+    def compareSourceLists(self, root, msources, files):
+        if NOWARNDIRS.intersection(pathsplit(root)):
+            return
+        smsources = set(msources)
+        ssources  = set(f for f in files if os.path.splitext(f)[1] in ['.c', '.cxx', '.cc', '.cu', '.cpp', '.F'])
+        if not smsources.issubset(ssources):
+            self.mistakes.append('Makefile contains file not on filesystem: %s: %r' % (root, sorted(smsources - ssources)))
+        if not self.verbose: return
+        if smsources != ssources:
+            from sys import stderr
+            stderr.write('Source mismatch at %s:\n\t%s: %r\n\t%s: %r\n\t%s: %r\n'
+                         % (root,
+                            'in makefile   ',sorted(smsources),
+                            'on filesystem ',sorted(ssources),
+                            'symmetric diff',sorted(smsources.symmetric_difference(ssources))))
 
-        # Work out how much of the filepath is shared by start and path.
-        i = len(commonprefix([start_list, path_list]))
+    def summary(self):
+        for m in self.mistakes:
+            self.log.write(m + '\n')
+        if self.mistakes:
+            raise RuntimeError('PETSc makefiles contain mistakes or files are missing on filesystem.\n%s\nPossible reasons:\n\t1. Files were deleted locally, try "hg revert filename" or "git checkout filename".\n\t2. Files were deleted from repository, but were not removed from makefile. Send mail to petsc-maint@mcs.anl.gov.\n\t3. Someone forgot to "add" new files to the repository. Send mail to petsc-maint@mcs.anl.gov.' % ('\n'.join(self.mistakes)))
 
-        rel_list = [pardir] * (len(start_list)-i) + path_list[i:]
-        if not rel_list:
-            return curdir
-        return join(*rel_list)
-    os.path.relpath = _relpath
+def stripsplit(line):
+  return line[len('#requires'):].replace("'","").split()
+
+PetscPKGS = 'sys vec mat dm ksp snes ts tao'.split()
+LANGS = dict(c='C', cxx='CXX', cpp='CPP', cu='CU', F='F', F90='F90')
 
 class debuglogger(object):
     def __init__(self, log):
@@ -50,7 +78,7 @@ class debuglogger(object):
         self._log.debug(string)
 
 class Petsc(object):
-    def __init__(self, petsc_dir=None, petsc_arch=None, verbose=False):
+    def __init__(self, petsc_dir=None, petsc_arch=None, pkg_dir=None, pkg_name=None, pkg_arch=None, pkg_pkgs=None, verbose=False):
         if petsc_dir is None:
             petsc_dir = os.environ.get('PETSC_DIR')
             if petsc_dir is None:
@@ -67,11 +95,25 @@ class Petsc(object):
                 finally:
                     if petsc_arch is None:
                         raise RuntimeError('Could not determine PETSC_ARCH, please set in environment')
-        self.petsc_dir = petsc_dir
-        self.petsc_arch = petsc_arch
+        self.petsc_dir = os.path.normpath(petsc_dir)
+        self.petsc_arch = petsc_arch.rstrip(os.sep)
+        self.pkg_dir = pkg_dir
+        self.pkg_name = pkg_name
+        self.pkg_arch = pkg_arch
+        if self.pkg_dir is None:
+          self.pkg_dir = petsc_dir
+          self.pkg_name = 'petsc'
+          self.pkg_arch = self.petsc_arch
+        if self.pkg_name is None:
+          self.pkg_name = os.path.basename(os.path.normpath(self.pkg_dir))
+        if self.pkg_arch is None:
+          self.pkg_arch = self.petsc_arch
+        self.pkg_pkgs = PetscPKGS
+        if pkg_pkgs is not None:
+          self.pkg_pkgs += list(set(pkg_pkgs.split(','))-set(self.pkg_pkgs))
         self.read_conf()
         try:
-            logging.basicConfig(filename=self.arch_path('lib','petsc','conf', 'gmake.log'), level=logging.DEBUG)
+            logging.basicConfig(filename=self.pkg_arch_path('lib',self.pkg_name,'conf', 'gmake.log'), level=logging.DEBUG)
         except IOError:
             # Disable logging if path is not writeable (e.g., prefix install)
             logging.basicConfig(filename='/dev/null', level=logging.DEBUG)
@@ -81,6 +123,9 @@ class Petsc(object):
 
     def arch_path(self, *args):
         return os.path.join(self.petsc_dir, self.petsc_arch, *args)
+
+    def pkg_arch_path(self, *args):
+        return os.path.join(self.pkg_dir, self.pkg_arch, *args)
 
     def read_conf(self):
         self.conf = dict()
@@ -92,6 +137,20 @@ class Petsc(object):
                 val = define[space+1:]
                 self.conf[key] = val
         self.conf.update(parse_makefile(self.arch_path('lib','petsc','conf', 'petscvariables')))
+        # allow parsing package additional configurations (if any)
+        if self.pkg_name != 'petsc' :
+            f = self.pkg_arch_path('include', self.pkg_name + 'conf.h')
+            if os.path.isfile(f):
+                for line in open(self.pkg_arch_path('include', self.pkg_name + 'conf.h')):
+                    if line.startswith('#define '):
+                        define = line[len('#define '):]
+                        space = define.find(' ')
+                        key = define[:space]
+                        val = define[space+1:]
+                        self.conf[key] = val
+            f = self.pkg_arch_path('lib',self.pkg_name,'conf', self.pkg_name + 'variables')
+            if os.path.isfile(f):
+                self.conf.update(parse_makefile(self.pkg_arch_path('lib',self.pkg_name,'conf', self.pkg_name + 'variables')))
         self.have_fortran = int(self.conf.get('PETSC_HAVE_FORTRAN', '0'))
 
     def inconf(self, key, val):
@@ -106,7 +165,7 @@ class Petsc(object):
         raise RuntimeError('Unknown conf check: %s %s' % (key, val))
 
     def relpath(self, root, src):
-        return os.path.relpath(os.path.join(root, src), self.petsc_dir)
+        return os.path.relpath(os.path.join(root, src), self.pkg_dir)
 
     def get_sources(self, makevars):
         """Return dict {lang: list_of_source_files}"""
@@ -119,7 +178,7 @@ class Petsc(object):
         pkgsrcs = dict()
         for lang in LANGS:
             pkgsrcs[lang] = []
-        for root, dirs, files in os.walk(os.path.join(self.petsc_dir, 'src', pkg)):
+        for root, dirs, files in os.walk(os.path.join(self.pkg_dir, 'src', pkg)):
             dirs.sort()
             files.sort()
             makefile = os.path.join(root,'makefile')
@@ -142,7 +201,7 @@ class Petsc(object):
                 return self.relpath(root, src)
             source = self.get_sources(makevars)
             for lang, s in source.items():
-                pkgsrcs[lang] += map(mkrel, s)
+                pkgsrcs[lang] += [mkrel(t) for t in s]
                 allsource += s
             self.mistakes.compareSourceLists(root, allsource, files) # Diagnostic output about unused source files
             self.gendeps.append(self.relpath(root, 'makefile'))
@@ -152,19 +211,19 @@ class Petsc(object):
         def write(stem, srcs):
             for lang in LANGS:
                 fd.write('%(stem)s.%(lang)s := %(srcs)s\n' % dict(stem=stem, lang=lang, srcs=' '.join(srcs[lang])))
-        for pkg in PKGS:
+        for pkg in self.pkg_pkgs:
             srcs = self.gen_pkg(pkg)
             write('srcs-' + pkg, srcs)
         return self.gendeps
 
     def gen_ninja(self, fd):
         libobjs = []
-        for pkg in PKGS:
+        for pkg in self.pkg_pkgs:
             srcs = self.gen_pkg(pkg)
             for lang in LANGS:
                 for src in srcs[lang]:
                     obj = '$objdir/%s.o' % src
-                    fd.write('build %(obj)s : %(lang)s_COMPILE %(src)s\n' % dict(obj=obj, lang=lang.upper(), src=os.path.join(self.petsc_dir,src)))
+                    fd.write('build %(obj)s : %(lang)s_COMPILE %(src)s\n' % dict(obj=obj, lang=lang.upper(), src=os.path.join(self.pkg_dir,src)))
                     libobjs.append(obj)
         fd.write('\n')
         fd.write('build $libdir/libpetsc.so : %s_LINK_SHARED %s\n\n' % ('CF'[self.have_fortran], ' '.join(libobjs)))
@@ -174,13 +233,13 @@ class Petsc(object):
         self.mistakes.summary()
 
 def WriteGnuMake(petsc):
-    arch_files = petsc.arch_path('lib','petsc','conf', 'files')
+    arch_files = petsc.pkg_arch_path('lib',petsc.pkg_name,'conf', 'files')
     fd = open(arch_files, 'w')
     gendeps = petsc.gen_gnumake(fd)
     fd.write('\n')
     fd.write('# Dependency to regenerate this file\n')
-    fd.write('%s : %s %s\n' % (os.path.relpath(arch_files, petsc.petsc_dir),
-                               os.path.relpath(__file__, os.path.realpath(petsc.petsc_dir)),
+    fd.write('%s : %s %s\n' % (os.path.relpath(arch_files, petsc.pkg_dir),
+                               os.path.relpath(__file__, os.path.realpath(petsc.pkg_dir)),
                                ' '.join(gendeps)))
     fd.write('\n')
     fd.write('# Dummy dependencies in case makefiles are removed\n')
@@ -237,13 +296,13 @@ def WriteNinja(petsc):
                                                        os.path.abspath(__file__),
                                                        os.path.join(petsc.petsc_dir, 'lib','petsc','conf', 'variables'),
                                                        petsc.arch_path('lib','petsc','conf', 'petscvariables'),
-                                                       ' '.join(os.path.join(petsc.petsc_dir, dep) for dep in petsc.gendeps)))
+                                                       ' '.join(os.path.join(petsc.pkg_dir, dep) for dep in petsc.gendeps)))
 
-def main(petsc_dir=None, petsc_arch=None, output=None, verbose=False):
+def main(petsc_dir=None, petsc_arch=None, pkg_dir=None, pkg_name=None, pkg_arch=None, pkg_pkgs=None, output=None, verbose=False):
     if output is None:
         output = 'gnumake'
     writer = dict(gnumake=WriteGnuMake, ninja=WriteNinja)
-    petsc = Petsc(petsc_dir=petsc_dir, petsc_arch=petsc_arch, verbose=verbose)
+    petsc = Petsc(petsc_dir=petsc_dir, petsc_arch=petsc_arch, pkg_dir=pkg_dir, pkg_name=pkg_name, pkg_arch=pkg_arch, pkg_pkgs=pkg_pkgs, verbose=verbose)
     writer[output](petsc)
     petsc.summary()
 
@@ -252,10 +311,14 @@ if __name__ == '__main__':
     parser = optparse.OptionParser()
     parser.add_option('--verbose', help='Show mismatches between makefiles and the filesystem', action='store_true', default=False)
     parser.add_option('--petsc-arch', help='Set PETSC_ARCH different from environment', default=os.environ.get('PETSC_ARCH'))
+    parser.add_option('--pkg-dir', help='Set the directory of the package (different from PETSc) you want to generate the makefile rules for', default=None)
+    parser.add_option('--pkg-name', help='Set the name of the package you want to generate the makefile rules for', default=None)
+    parser.add_option('--pkg-arch', help='Set the package arch name you want to generate the makefile rules for', default=None)
+    parser.add_option('--pkg-pkgs', help='Set the package folders (comma separated list, different from the usual sys,vec,mat etc) you want to generate the makefile rules for', default=None)
     parser.add_option('--output', help='Location to write output file', default=None)
     opts, extra_args = parser.parse_args()
     if extra_args:
         import sys
         sys.stderr.write('Unknown arguments: %s\n' % ' '.join(extra_args))
         exit(1)
-    main(petsc_arch=opts.petsc_arch, output=opts.output, verbose=opts.verbose)
+    main(petsc_arch=opts.petsc_arch, pkg_dir=opts.pkg_dir, pkg_name=opts.pkg_name, pkg_arch=opts.pkg_arch, pkg_pkgs=opts.pkg_pkgs, output=opts.output, verbose=opts.verbose)

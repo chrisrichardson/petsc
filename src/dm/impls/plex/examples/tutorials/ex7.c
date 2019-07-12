@@ -16,7 +16,7 @@ static PetscErrorCode ProcessOptions(MPI_Comm comm, AppCtx *options)
   options->simplex = PETSC_FALSE;
 
   ierr = PetscOptionsBegin(comm, "", "Sphere Mesh Options", "DMPLEX");CHKERRQ(ierr);
-  ierr = PetscOptionsInt("-dim", "Problem dimension", "ex7.c", options->dim, &options->dim, NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsRangeInt("-dim", "Problem dimension", "ex7.c", options->dim, &options->dim, NULL,1,3);CHKERRQ(ierr);
   ierr = PetscOptionsBool("-simplex", "Use simplices, or tensor product cells", "ex7.c", options->simplex, &options->simplex, NULL);CHKERRQ(ierr);
   ierr = PetscOptionsEnd();
   PetscFunctionReturn(0);
@@ -75,7 +75,7 @@ int main(int argc, char **argv)
   AppCtx         ctx;
   PetscErrorCode ierr;
 
-  ierr = PetscInitialize(&argc, &argv, NULL,help);CHKERRQ(ierr);
+  ierr = PetscInitialize(&argc, &argv, NULL,help);if (ierr) return ierr;
   ierr = ProcessOptions(PETSC_COMM_WORLD, &ctx);CHKERRQ(ierr);
   ierr = DMPlexCreateSphereMesh(PETSC_COMM_WORLD, ctx.dim, ctx.simplex, &dm);CHKERRQ(ierr);
   ierr = PetscObjectSetName((PetscObject) dm, "Sphere");CHKERRQ(ierr);

@@ -9,7 +9,6 @@ static PetscBool AOPackageInitialized = PETSC_FALSE;
 
   Level: developer
 
-.keywords: AO, initialize, package
 .seealso: PetscInitialize()
 @*/
 PetscErrorCode  AOFinalizePackage(void)
@@ -25,11 +24,11 @@ PetscErrorCode  AOFinalizePackage(void)
 
 /*@C
   AOInitializePackage - This function initializes everything in the AO package. It is called
-  from PetscDLLibraryRegister() when using dynamic libraries, and on the first call to AOCreate().
+  from PetscDLLibraryRegister_petscvec() when using dynamic libraries, and on the first call to AOCreate()
+  when using static or shared libraries.
 
   Level: developer
 
-.keywords: AO, initialize, package
 .seealso: PetscInitialize()
 @*/
 PetscErrorCode  AOInitializePackage(void)

@@ -169,7 +169,7 @@ int main(int argc,char **argv)
   AppCtx         app;
   PetscInt       direction[2];
   PetscBool      terminate[2];
-  PetscBool      rhs_form=PETSC_FALSE;
+  PetscBool      rhs_form=PETSC_FALSE,hist=PETSC_TRUE;
   TSAdapt        adapt;
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -183,6 +183,7 @@ int main(int argc,char **argv)
   app.maxbounces = 10;
   ierr = PetscOptionsBegin(PETSC_COMM_WORLD,NULL,"ex40 options","");CHKERRQ(ierr);
   ierr = PetscOptionsInt("-maxbounces","","",app.maxbounces,&app.maxbounces,NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsBool("-test_adapthistory","","",hist,&hist,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsEnd();CHKERRQ(ierr);
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -253,6 +254,37 @@ int main(int argc,char **argv)
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
   ierr = TSSolve(ts,U);CHKERRQ(ierr);
 
+  if (hist) { /* replay following history */
+    TSTrajectory tj;
+    PetscReal    tf,t0,dt;
+
+    app.nbounces = 0;
+    ierr = TSGetTime(ts,&tf);CHKERRQ(ierr);
+    ierr = TSSetMaxTime(ts,tf);CHKERRQ(ierr);
+    ierr = TSSetStepNumber(ts,0);CHKERRQ(ierr);
+    ierr = TSRestartStep(ts);CHKERRQ(ierr);
+    ierr = TSSetExactFinalTime(ts,TS_EXACTFINALTIME_MATCHSTEP);CHKERRQ(ierr);
+    ierr = TSSetFromOptions(ts);CHKERRQ(ierr);
+    ierr = TSGetAdapt(ts,&adapt);CHKERRQ(ierr);
+    ierr = TSAdaptSetType(adapt,TSADAPTHISTORY);CHKERRQ(ierr);
+    ierr = TSGetTrajectory(ts,&tj);CHKERRQ(ierr);
+    ierr = TSAdaptHistorySetTrajectory(adapt,tj,PETSC_FALSE);CHKERRQ(ierr);
+    ierr = TSAdaptHistoryGetStep(adapt,0,&t0,&dt);CHKERRQ(ierr);
+    /* this example fails with single (or smaller) precision */
+#if defined(PETSC_USE_REAL_SINGLE) || defined(PETSC_USE_REAL__FP16)
+    ierr = TSAdaptSetType(adapt,TSADAPTBASIC);CHKERRQ(ierr);
+    ierr = TSAdaptSetStepLimits(adapt,0.0,0.5);CHKERRQ(ierr);
+    ierr = TSSetFromOptions(ts);CHKERRQ(ierr);
+#endif
+    ierr = TSSetTime(ts,t0);CHKERRQ(ierr);
+    ierr = TSSetTimeStep(ts,dt);CHKERRQ(ierr);
+    ierr = TSResetTrajectory(ts);CHKERRQ(ierr);
+    ierr = VecGetArray(U,&u);CHKERRQ(ierr);
+    u[0] = 0.0;
+    u[1] = 20.0;
+    ierr = VecRestoreArray(U,&u);CHKERRQ(ierr);
+    ierr = TSSolve(ts,U);CHKERRQ(ierr);
+  }
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Free work space.  All PETSc objects should be destroyed when they are no longer needed.
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
@@ -299,5 +331,20 @@ int main(int argc,char **argv)
       suffix: g
       args: -rhs-form -ts_type rk -ts_rk_type 5bs -ts_trajectory_dirname ex40_g_dir
       output_file: output/ex40.out 
+
+    test:
+      suffix: h
+      args: -rhs-form -ts_type rk -ts_rk_type 6vr -ts_trajectory_dirname ex40_h_dir
+      output_file: output/ex40.out
+
+    test:
+      suffix: i
+      args: -rhs-form -ts_type rk -ts_rk_type 7vr -ts_trajectory_dirname ex40_i_dir
+      output_file: output/ex40.out
+
+    test:
+      suffix: j
+      args: -rhs-form -ts_type rk -ts_rk_type 8vr -ts_trajectory_dirname ex40_j_dir
+      output_file: output/ex40.out
 
 TEST*/

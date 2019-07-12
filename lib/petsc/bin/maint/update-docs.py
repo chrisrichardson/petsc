@@ -9,7 +9,6 @@ from __future__ import print_function
 import os
 import glob
 import posixpath
-import string
 from sys import *
 import shutil
 import os.path
@@ -26,8 +25,8 @@ def modifyfile(filename):
     buf    = fd.read()
     fd.close()
 
-    header = string.split(string.split(buf, '<!--end-->')[0],'<!--begin-->')[1]
-    body = string.split(string.split(buf, '<!--end-->')[1],'<!--begin-->')[1]
+    header = buf.split('<!--end-->')[0].split('<!--begin-->')[1]
+    body = buf.split('<!--end-->')[1].split('<!--begin-->')[1]
 
     outbuf = '''
  <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
@@ -45,12 +44,12 @@ def modifyfile(filename):
 </html>
 '''
 
-    #fix http://www.mcs.anl.gov/petsc/petsc-current/docs/
-    w = re.compile(r'http://www.mcs.anl.gov/petsc/petsc-current/docs/')
+    #fix https://www.mcs.anl.gov/petsc/petsc-current/docs/
+    w = re.compile(r'https://www.mcs.anl.gov/petsc/petsc-current/docs/')
     outbuf = w.sub('',outbuf)
 
-    #fix  http://www.mcs.anl.gov/petsc/petsc-current/include/ (for petscversion.h)
-    w = re.compile(r'http://www.mcs.anl.gov/petsc/petsc-current/include/')
+    #fix  https://www.mcs.anl.gov/petsc/petsc-current/include/ (for petscversion.h)
+    w = re.compile(r'https://www.mcs.anl.gov/petsc/petsc-current/include/')
     outbuf = w.sub('',outbuf)
 
     # Now overwrite the original file
@@ -131,6 +130,7 @@ def main():
         'changes/38.html',
         'changes/39.html',
         'changes/310.html',
+        'changes/311.html',
         'changes/dev.html',
         'changes/index.html',
         'installation.html']

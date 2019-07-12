@@ -1,14 +1,17 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 configure_options = [
   '--with-cc=clang',
   '--with-cxx=clang++',
   '--with-fc=gfortran',
-  '--with-openmp=1',
-  '--download-hwloc=1',
   '--with-debugging=1',
+  'COPTFLAGS=-g -O',
+  'FOPTFLAGS=-g -O',
+  'CXXOPTFLAGS=-g -O',
   '--download-openmpi=1',
   '--download-fblaslapack=1',
+  '--with-openmp=1',
+  '--download-hwloc=1',
   #'--download-hypre=1', disabled as hypre produces wrong results when openmp is enabled
   '--download-cmake=1',
   '--download-metis=1',
@@ -22,7 +25,6 @@ configure_options = [
   '--download-strumpack=1',
   '--download-mumps=1',
   '--download-elemental=1',
-  '--with-cxx-dialect=C++11',
   '--download-spai=1',
   '--download-parms=1',
   '--download-chaco=1'

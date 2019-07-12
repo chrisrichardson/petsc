@@ -1,7 +1,7 @@
 
 /* This file contains info for the use of PETSc Fortran interface stubs */
-#if !defined(_FORTRANIMPL_H)
-#define _FORTRANIMPL_H
+#if !defined(PETSCFORTRANIMPL_H)
+#define PETSCFORTRANIMPL_H
 
 #include <petsc/private/petscimpl.h>
 
@@ -94,7 +94,7 @@ if (flg) {                                   \
 #define FORTRANNULLBOOL(a)      (((void*)(PETSC_UINTPTR_T)a) == PETSC_NULL_BOOL_Fortran)
 #define FORTRANNULLCHARACTER(a) (((void*)(PETSC_UINTPTR_T)a) == PETSC_NULL_CHARACTER_Fortran)
 #define FORTRANNULLFUNCTION(a)  (((void(*)(void))(PETSC_UINTPTR_T)a) == PETSC_NULL_FUNCTION_Fortran)
-#define FORTRANNULLOBJECT(a)    (*(void**)(PETSC_UINTPTR_T)a == (void*)-1)
+#define FORTRANNULLOBJECT(a)    (*(void**)(PETSC_UINTPTR_T)a == (void*)0)
 
 #define CHKFORTRANNULLINTEGER(a)  \
   if (FORTRANNULLDOUBLE(a) || FORTRANNULLSCALAR(a) || FORTRANNULLREAL(a)  || FORTRANNULLBOOL(a) || FORTRANNULLFUNCTION(a) || FORTRANNULLCHARACTER(a)) { \
@@ -120,12 +120,6 @@ if (flg) {                                   \
     "Use PETSC_NULL_REAL"); *ierr = 1; return; } \
   else if (FORTRANNULLREAL(a)) { a = NULL; }
 
-/*
-   The next two macros can generate false positives for Valgrind if the object passed
-   in has never been set before because the location (void**)a has never had a value
-   set to it. To prevent the false positive in the Fortran code one can initialize the
-   object with a = tXXX(0); for example a = tVec(0)
-*/
 #define CHKFORTRANNULLOBJECT(a)  \
   if (FORTRANNULLINTEGER(a) || FORTRANNULLDOUBLE(a) || FORTRANNULLSCALAR(a) || FORTRANNULLREAL(a) || FORTRANNULLBOOL(a) || FORTRANNULLFUNCTION(a) || FORTRANNULLCHARACTER(a)) { \
     PetscError(PETSC_COMM_SELF,__LINE__,"fortran_interface_unknown_file",__FILE__,PETSC_ERR_ARG_WRONG,PETSC_ERROR_INITIAL, \
@@ -233,7 +227,7 @@ typedef PETSC_UINTPTR_T PetscFortranAddr;
 #define PetscObjectUseFortranCallbackSubType(obj,cid,types,args) PetscObjectUseFortranCallback_Private(obj,cid,types,args,PETSC_FORTRAN_CALLBACK_SUBTYPE)
 
 /* Disable deprecation warnings while building Fortran wrappers */
-#undef  PETSC_DEPRECATED
-#define PETSC_DEPRECATED(arg)
+#undef  PETSC_DEPRECATED_FUNCTION
+#define PETSC_DEPRECATED_FUNCTION(arg)
 
 #endif

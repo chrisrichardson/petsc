@@ -70,8 +70,10 @@ static PetscErrorCode  PCGASMSubdomainView_Private(PC pc, PetscInt i, PetscViewe
    in case nidx == 0. That will take care of the space for the trailing '\0' as well.
    For nidx == 0, the whole string 16 '\0'.
    */
-  ierr = PetscMalloc1(16*(nidx+1)+1, &cidx);CHKERRQ(ierr);
-  ierr = PetscViewerStringOpen(PETSC_COMM_SELF, cidx, 16*(nidx+1)+1, &sviewer);CHKERRQ(ierr);
+#define len  16*(nidx+1)+1
+  ierr = PetscMalloc1(len, &cidx);CHKERRQ(ierr);
+  ierr = PetscViewerStringOpen(PETSC_COMM_SELF, cidx, len, &sviewer);CHKERRQ(ierr);
+#undef len
   ierr = ISGetIndices(osm->iis[i], &idx);CHKERRQ(ierr);
   for (j = 0; j < nidx; ++j) {
     ierr = PetscViewerStringSPrintf(sviewer, "%D ", idx[j]);CHKERRQ(ierr);
@@ -95,8 +97,10 @@ static PetscErrorCode  PCGASMSubdomainView_Private(PC pc, PetscInt i, PetscViewe
    in case nidx == 0. That will take care of the space for the trailing '\0' as well.
    For nidx == 0, the whole string 16 '\0'.
    */
-  ierr = PetscMalloc1(16*(nidx+1)+1, &cidx);CHKERRQ(ierr);
-  ierr = PetscViewerStringOpen(PETSC_COMM_SELF, cidx, 16*(nidx+1)+1, &sviewer);CHKERRQ(ierr);
+#define len  16*(nidx+1)+1
+  ierr = PetscMalloc1(len, &cidx);CHKERRQ(ierr);
+  ierr = PetscViewerStringOpen(PETSC_COMM_SELF, cidx, len, &sviewer);CHKERRQ(ierr);
+#undef len
   ierr = ISGetIndices(osm->ois[i], &idx);CHKERRQ(ierr);
   for (j = 0; j < nidx; ++j) {
     ierr = PetscViewerStringSPrintf(sviewer,"%D ", idx[j]);CHKERRQ(ierr);
@@ -295,7 +299,7 @@ PetscErrorCode PCGASMSetHierarchicalPartitioning(PC pc)
    ierr = MatCreateVecs(pc->pmat,&outervec,NULL);CHKERRQ(ierr);
    ierr = VecCreateMPI(comm,fromrows_localsize,PETSC_DETERMINE,&(osm->pcx));CHKERRQ(ierr);
    ierr = VecDuplicate(osm->pcx,&(osm->pcy));CHKERRQ(ierr);
-   ierr = VecScatterCreateWithData(osm->pcx,NULL,outervec,fromrows,&(osm->pctoouter));CHKERRQ(ierr);
+   ierr = VecScatterCreate(osm->pcx,NULL,outervec,fromrows,&(osm->pctoouter));CHKERRQ(ierr);
    ierr = MatCreateSubMatrix(pc->pmat,fromrows,fromrows,MAT_INITIAL_MATRIX,&(osm->permutationP));CHKERRQ(ierr);
    ierr = PetscObjectReference((PetscObject)fromrows);CHKERRQ(ierr);
    osm->permutationIS = fromrows;
@@ -443,7 +447,7 @@ static PetscErrorCode PCSetUp_GASM(PC pc)
     for (i=0; i<osm->n; i++) {
       ierr = ISGetLocalSize(osm->ois[i],&oni);CHKERRQ(ierr);
       ierr = ISGetIndices(osm->ois[i],&oidxi);CHKERRQ(ierr);
-      ierr = PetscMemcpy(oidx+on,oidxi,sizeof(PetscInt)*oni);CHKERRQ(ierr);
+      ierr = PetscArraycpy(oidx+on,oidxi,oni);CHKERRQ(ierr);
       ierr = ISRestoreIndices(osm->ois[i],&oidxi);CHKERRQ(ierr);
       on  += oni;
     }
@@ -461,7 +465,7 @@ static PetscErrorCode PCSetUp_GASM(PC pc)
     ierr = VecGetOwnershipRange(osm->gx, &gostart, NULL);CHKERRQ(ierr);
     ierr = ISCreateStride(PetscObjectComm((PetscObject)pc),on,gostart,1, &goid);CHKERRQ(ierr);
     /* gois might indices not on local */
-    ierr = VecScatterCreateWithData(x,gois,osm->gx,goid, &(osm->gorestriction));CHKERRQ(ierr);
+    ierr = VecScatterCreate(x,gois,osm->gx,goid, &(osm->gorestriction));CHKERRQ(ierr);
     ierr = PetscMalloc1(osm->n,&numbering);CHKERRQ(ierr);
     ierr = PetscObjectsListGetGlobalNumbering(PetscObjectComm((PetscObject)pc),osm->n,(PetscObject*)osm->ois,NULL,numbering);CHKERRQ(ierr);
     ierr = VecDestroy(&x);CHKERRQ(ierr);
@@ -517,7 +521,7 @@ static PetscErrorCode PCSetUp_GASM(PC pc)
       ierr = VecRestoreArray(osm->gy,&array);CHKERRQ(ierr);
       ierr = ISCreateGeneral(PetscObjectComm((PetscObject)pc),in,iidx,PETSC_OWN_POINTER,&giis);CHKERRQ(ierr);
       ierr = ISCreateGeneral(PetscObjectComm((PetscObject)pc),in,ioidx,PETSC_OWN_POINTER,&giois);CHKERRQ(ierr);
-      ierr = VecScatterCreateWithData(y,giis,osm->gy,giois,&osm->girestriction);CHKERRQ(ierr);
+      ierr = VecScatterCreate(y,giis,osm->gy,giois,&osm->girestriction);CHKERRQ(ierr);
       ierr = VecDestroy(&y);CHKERRQ(ierr);
       ierr = ISDestroy(&giis);CHKERRQ(ierr);
       ierr = ISDestroy(&giois);CHKERRQ(ierr);
@@ -545,6 +549,7 @@ static PetscErrorCode PCSetUp_GASM(PC pc)
     for (i=0; i<osm->n; i++) {
       char subprefix[PETSC_MAX_PATH_LEN+1];
       ierr        = KSPCreate(((PetscObject)(osm->ois[i]))->comm,&ksp);CHKERRQ(ierr);
+      ierr        = KSPSetErrorIfNotConverged(ksp,pc->erroriffailure);CHKERRQ(ierr);
       ierr        = PetscLogObjectParent((PetscObject)pc,(PetscObject)ksp);CHKERRQ(ierr);
       ierr        = PetscObjectIncrementTabLevel((PetscObject)ksp,(PetscObject)pc,1);CHKERRQ(ierr);
       ierr        = KSPSetType(ksp,KSPPREONLY);CHKERRQ(ierr);
@@ -673,6 +678,7 @@ static PetscErrorCode PCApply_GASM(PC pc,Vec xin,Vec yout)
   /* do the subdomain solves */
   for (i=0; i<osm->n; ++i) {
     ierr = KSPSolve(osm->ksp[i],osm->x[i],osm->y[i]);CHKERRQ(ierr);
+    ierr = KSPCheckSolve(osm->ksp[i],pc,osm->y[i]);CHKERRQ(ierr);
   }
   /* Do we need to zero y ?? */
   ierr = VecZeroEntries(y);CHKERRQ(ierr);
@@ -731,6 +737,7 @@ static PetscErrorCode PCApplyTranspose_GASM(PC pc,Vec xin,Vec yout)
   /* do the local solves */
   for (i=0; i<osm->n; ++i) { /* Note that the solves are local, so we can go to osm->n, rather than osm->nmax. */
     ierr = KSPSolveTranspose(osm->ksp[i],osm->x[i],osm->y[i]);CHKERRQ(ierr);
+    ierr = KSPCheckSolve(osm->ksp[i],pc,osm->y[i]);CHKERRQ(ierr);
   }
   ierr = VecZeroEntries(y);CHKERRQ(ierr);
   if (!(osm->type & PC_GASM_RESTRICT)) {
@@ -876,8 +883,6 @@ static PetscErrorCode PCSetFromOptions_GASM(PetscOptionItems *PetscOptionsObject
 
 
     Level: beginner
-
-.keywords: PC, ASM, DM, set, subdomains, additive Schwarz
 
 .seealso: PCGASMSetSubdomains(), PCGASMSetOverlap()
           PCGASMCreateSubdomains2D()
@@ -1061,8 +1066,6 @@ static PetscErrorCode  PCGASMGetSubKSP_GASM(PC pc,PetscInt *n,PetscInt *first,KS
 
     Level: advanced
 
-.keywords: PC, GASM, set, subdomains, additive Schwarz
-
 .seealso: PCGASMSetNumSubdomains(), PCGASMSetOverlap(), PCGASMGetSubKSP(),
           PCGASMCreateSubdomains2D(), PCGASMGetSubdomains()
 @*/
@@ -1111,8 +1114,6 @@ PetscErrorCode  PCGASMSetSubdomains(PC pc,PetscInt n,IS iis[],IS ois[])
 
     Level: intermediate
 
-.keywords: PC, GASM, set, overlap
-
 .seealso: PCGASMSetSubdomains(), PCGASMGetSubKSP(),
           PCGASMCreateSubdomains2D(), PCGASMGetSubdomains()
 @*/
@@ -1150,8 +1151,6 @@ PetscErrorCode  PCGASMSetOverlap(PC pc,PetscInt ovl)
 
     Level: intermediate
 
-.keywords: PC, GASM, set, type
-
 .seealso: PCGASMSetSubdomains(), PCGASMGetSubKSP(),
           PCGASMCreateSubdomains2D()
 @*/
@@ -1176,8 +1175,6 @@ PetscErrorCode  PCGASMSetType(PC pc,PCGASMType type)
 -   doSort - sort the subdomain indices
 
     Level: intermediate
-
-.keywords: PC, GASM, set, type
 
 .seealso: PCGASMSetSubdomains(), PCGASMGetSubKSP(),
           PCGASMCreateSubdomains2D()
@@ -1217,8 +1214,6 @@ PetscErrorCode  PCGASMSetSortIndices(PC pc,PetscBool doSort)
    You must call KSPSetUp() before calling PCGASMGetSubKSP().
 
    Level: advanced
-
-.keywords: PC, GASM, additive Schwarz, get, sub, KSP, context
 
 .seealso: PCGASMSetSubdomains(), PCGASMSetOverlap(),
           PCGASMCreateSubdomains2D(),
@@ -1261,8 +1256,6 @@ PetscErrorCode  PCGASMGetSubKSP(PC pc,PetscInt *n_local,PetscInt *first_local,KS
 
 
    Level: beginner
-
-   Concepts: additive Schwarz method
 
     References:
 +   1. - M Dryja, OB Widlund, An additive variant of the Schwarz alternating method for the case of many subregions
@@ -1355,8 +1348,8 @@ PetscErrorCode  PCGASMCreateLocalSubdomains(Mat A, PetscInt nloc, IS *iis[])
     ierr = MatGetDiagonalBlock(A,&Ad);CHKERRQ(ierr);
   }
   if (Ad) {
-    ierr = PetscObjectTypeCompare((PetscObject)Ad,MATSEQBAIJ,&isbaij);CHKERRQ(ierr);
-    if (!isbaij) {ierr = PetscObjectTypeCompare((PetscObject)Ad,MATSEQSBAIJ,&isbaij);CHKERRQ(ierr);}
+    ierr = PetscObjectBaseTypeCompare((PetscObject)Ad,MATSEQBAIJ,&isbaij);CHKERRQ(ierr);
+    if (!isbaij) {ierr = PetscObjectBaseTypeCompare((PetscObject)Ad,MATSEQSBAIJ,&isbaij);CHKERRQ(ierr);}
   }
   if (Ad && nloc > 1) {
     PetscBool  match,done;
@@ -1511,8 +1504,6 @@ PETSC_INTERN PetscErrorCode  PCGASMCreateStraddlingSubdomains(Mat A,PetscInt N,P
 	 overlap; this is currently supported only with local subdomains.
 
 
-.keywords: PC, GASM, additive Schwarz, create, subdomains, unstructured grid
-
 .seealso: PCGASMSetSubdomains(), PCGASMDestroySubdomains()
 @*/
 PetscErrorCode  PCGASMCreateSubdomains(Mat A,PetscInt N,PetscInt *n,IS *iis[])
@@ -1553,8 +1544,6 @@ PetscErrorCode  PCGASMCreateSubdomains(Mat A,PetscInt N,PetscInt *n,IS *iis[])
     this is merely a convenience subroutine that walks each list,
    destroys each IS on the list, and then frees the list. At the end the
    list pointers are set to NULL.
-
-.keywords: PC, GASM, additive Schwarz, create, subdomains, unstructured grid
 
 .seealso: PCGASMCreateSubdomains(), PCGASMSetSubdomains()
 @*/
@@ -1638,8 +1627,6 @@ PetscErrorCode  PCGASMDestroySubdomains(PetscInt n,IS **iis,IS **ois)
 
 
    Level: advanced
-
-.keywords: PC, GASM, additive Schwarz, create, subdomains, 2D, regular grid
 
 .seealso: PCGASMSetSubdomains(), PCGASMGetSubKSP(), PCGASMSetOverlap()
 @*/
@@ -1817,8 +1804,6 @@ PetscErrorCode  PCGASMCreateSubdomains2D(PC pc,PetscInt M,PetscInt N,PetscInt Md
 
     Level: advanced
 
-.keywords: PC, GASM, get, subdomains, additive Schwarz
-
 .seealso: PCGASMSetOverlap(), PCGASMGetSubKSP(), PCGASMCreateSubdomains2D(),
           PCGASMSetSubdomains(), PCGASMGetSubmatrices()
 @*/
@@ -1868,8 +1853,6 @@ PetscErrorCode  PCGASMGetSubdomains(PC pc,PetscInt *n,IS *iis[],IS *ois[])
            used to define subdomains in PCGASMSetSubdomains()
     Level: advanced
 
-.keywords: PC, GASM, set, local, subdomains, additive Schwarz, block Jacobi
-
 .seealso: PCGASMSetOverlap(), PCGASMGetSubKSP(),
           PCGASMCreateSubdomains2D(), PCGASMSetSubdomains(), PCGASMGetSubdomains()
 @*/
@@ -1910,8 +1893,6 @@ PetscErrorCode  PCGASMGetSubmatrices(PC pc,PetscInt *n,Mat *mat[])
     so setting PCGASMSetSubdomains() with nontrivial subdomain ISs or any of PCGASMSetTotalSubdomains() and PCGASMSetOverlap()
     automatically turns the latter off.
 
-.keywords: PC, ASM, DM, set, subdomains, additive Schwarz
-
 .seealso: PCGASMGetUseDMSubdomains(), PCGASMSetSubdomains(), PCGASMSetOverlap()
           PCGASMCreateSubdomains2D()
 @*/
@@ -1945,8 +1926,6 @@ PetscErrorCode  PCGASMSetUseDMSubdomains(PC pc,PetscBool flg)
 .   flg - boolean indicating whether to use subdomains defined by the DM
 
     Level: intermediate
-
-.keywords: PC, ASM, DM, set, subdomains, additive Schwarz
 
 .seealso: PCGASMSetUseDMSubdomains(), PCGASMSetOverlap()
           PCGASMCreateSubdomains2D()

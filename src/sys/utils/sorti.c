@@ -59,8 +59,6 @@ static void PetscSortInt_Private(PetscInt *v,PetscInt right)
 
    Level: intermediate
 
-   Concepts: sorting^ints
-
 .seealso: PetscSortReal(), PetscSortIntWithPermutation()
 @*/
 PetscErrorCode  PetscSortInt(PetscInt n,PetscInt i[])
@@ -96,8 +94,6 @@ PetscErrorCode  PetscSortInt(PetscInt n,PetscInt i[])
 
    Level: intermediate
 
-   Concepts: sorting^ints
-
 .seealso: PetscSortInt()
 @*/
 PetscErrorCode  PetscSortedRemoveDupsInt(PetscInt *n,PetscInt ii[])
@@ -129,8 +125,6 @@ PetscErrorCode  PetscSortedRemoveDupsInt(PetscInt *n,PetscInt ii[])
 
    Level: intermediate
 
-   Concepts: sorting^ints
-
 .seealso: PetscSortReal(), PetscSortIntWithPermutation(), PetscSortInt(), PetscSortedRemoveDupsInt()
 @*/
 PetscErrorCode  PetscSortRemoveDupsInt(PetscInt *n,PetscInt ii[])
@@ -157,8 +151,6 @@ PetscErrorCode  PetscSortRemoveDupsInt(PetscInt *n,PetscInt ii[])
 .  loc - the location if found, otherwise -(slot+1) where slot is the place the value would go
 
    Level: intermediate
-
-   Concepts: sorting^ints
 
 .seealso: PetscSortInt(), PetscSortIntWithArray(), PetscSortRemoveDupsInt()
 @*/
@@ -193,8 +185,6 @@ PetscErrorCode PetscFindInt(PetscInt key, PetscInt n, const PetscInt ii[], Petsc
 .  loc - the location if found, otherwise -(slot+1) where slot is the place the value would go
 
    Level: intermediate
-
-   Concepts: sorting^ints
 
 .seealso: PetscSortInt(), PetscSortIntWithArray(), PetscSortRemoveDupsInt()
 @*/
@@ -259,8 +249,6 @@ static PetscErrorCode PetscSortIntWithArray_Private(PetscInt *v,PetscInt *V,Pets
 -  I - second array of integers
 
    Level: intermediate
-
-   Concepts: sorting^ints with array
 
 .seealso: PetscSortReal(), PetscSortIntPermutation(), PetscSortInt()
 @*/
@@ -332,8 +320,6 @@ static PetscErrorCode PetscSortIntWithArrayPair_Private(PetscInt *L,PetscInt *J,
 
    Level: intermediate
 
-   Concepts: sorting^ints with array pair
-
 .seealso: PetscSortReal(), PetscSortIntPermutation(), PetscSortIntWithArray()
 @*/
 PetscErrorCode  PetscSortIntWithArrayPair(PetscInt n,PetscInt L[],PetscInt J[], PetscInt K[])
@@ -399,8 +385,6 @@ static void PetscSortMPIInt_Private(PetscMPIInt *v,PetscInt right)
 
    Level: intermediate
 
-   Concepts: sorting^ints
-
 .seealso: PetscSortReal(), PetscSortIntWithPermutation()
 @*/
 PetscErrorCode  PetscSortMPIInt(PetscInt n,PetscMPIInt i[])
@@ -436,8 +420,6 @@ PetscErrorCode  PetscSortMPIInt(PetscInt n,PetscMPIInt i[])
 .  n - number of non-redundant values
 
    Level: intermediate
-
-   Concepts: sorting^ints
 
 .seealso: PetscSortReal(), PetscSortIntWithPermutation(), PetscSortInt()
 @*/
@@ -499,8 +481,6 @@ static PetscErrorCode PetscSortMPIIntWithArray_Private(PetscMPIInt *v,PetscMPIIn
 
    Level: intermediate
 
-   Concepts: sorting^ints with array
-
 .seealso: PetscSortReal(), PetscSortIntPermutation(), PetscSortInt()
 @*/
 PetscErrorCode  PetscSortMPIIntWithArray(PetscMPIInt n,PetscMPIInt i[],PetscMPIInt Ii[])
@@ -521,6 +501,79 @@ PetscErrorCode  PetscSortMPIIntWithArray(PetscMPIInt n,PetscMPIInt i[],PetscMPII
     }
   } else {
     ierr = PetscSortMPIIntWithArray_Private(i,Ii,n-1);CHKERRQ(ierr);
+  }
+  PetscFunctionReturn(0);
+}
+
+/* -----------------------------------------------------------------------*/
+#define SWAP2MPIIntInt(a,b,c,d,t1,t2) {t1=a;a=b;b=t1;t2=c;c=d;d=t2;}
+
+/*
+   A simple version of quicksort; taken from Kernighan and Ritchie, page 87.
+   Assumes 0 origin for v, number of elements = right+1 (right is index of
+   right-most member).
+*/
+static PetscErrorCode PetscSortMPIIntWithIntArray_Private(PetscMPIInt *v,PetscInt *V,PetscMPIInt right)
+{
+  PetscErrorCode ierr;
+  PetscMPIInt    i,vl,last,t1;
+  PetscInt       t2;
+
+  PetscFunctionBegin;
+  if (right <= 1) {
+    if (right == 1) {
+      if (v[0] > v[1]) SWAP2MPIIntInt(v[0],v[1],V[0],V[1],t1,t2);
+    }
+    PetscFunctionReturn(0);
+  }
+  SWAP2MPIIntInt(v[0],v[right/2],V[0],V[right/2],t1,t2);
+  vl   = v[0];
+  last = 0;
+  for (i=1; i<=right; i++) {
+    if (v[i] < vl) {last++; SWAP2MPIIntInt(v[last],v[i],V[last],V[i],t1,t2);}
+  }
+  SWAP2MPIIntInt(v[0],v[last],V[0],V[last],t1,t2);
+  ierr = PetscSortMPIIntWithIntArray_Private(v,V,last-1);CHKERRQ(ierr);
+  ierr = PetscSortMPIIntWithIntArray_Private(v+last+1,V+last+1,right-(last+1));CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
+/*@
+   PetscSortMPIIntWithIntArray - Sorts an array of MPI integers in place in increasing order;
+       changes a second array of Petsc intergers to match the sorted first array.
+
+   Not Collective
+
+   Input Parameters:
++  n  - number of values
+.  i  - array of MPI integers
+-  I - second array of Petsc integers
+
+   Level: intermediate
+
+   Notes: this routine is useful when one needs to sort MPI ranks with other integer arrays.
+
+.seealso: PetscSortMPIIntWithArray()
+@*/
+PetscErrorCode PetscSortMPIIntWithIntArray(PetscMPIInt n,PetscMPIInt i[],PetscInt Ii[])
+{
+  PetscErrorCode ierr;
+  PetscMPIInt    j,k,t1,ik;
+  PetscInt       t2;
+
+  PetscFunctionBegin;
+  if (n<8) {
+    for (k=0; k<n; k++) {
+      ik = i[k];
+      for (j=k+1; j<n; j++) {
+        if (ik > i[j]) {
+          SWAP2MPIIntInt(i[k],i[j],Ii[k],Ii[j],t1,t2);
+          ik = i[k];
+        }
+      }
+    }
+  } else {
+    ierr = PetscSortMPIIntWithIntArray_Private(i,Ii,n-1);CHKERRQ(ierr);
   }
   PetscFunctionReturn(0);
 }
@@ -568,8 +621,6 @@ static PetscErrorCode PetscSortIntWithScalarArray_Private(PetscInt *v,PetscScala
 -  I - second array of scalars
 
    Level: intermediate
-
-   Concepts: sorting^ints with array
 
 .seealso: PetscSortReal(), PetscSortIntPermutation(), PetscSortInt(), PetscSortIntWithArray()
 @*/
@@ -648,8 +699,6 @@ static PetscErrorCode PetscSortIntWithDataArray_Private(PetscInt *v,char *V,Pets
 
    Level: intermediate
 
-   Concepts: sorting^ints with array
-
 .seealso: PetscSortReal(), PetscSortIntPermutation(), PetscSortInt(), PetscSortIntWithArray()
 @*/
 PetscErrorCode  PetscSortIntWithDataArray(PetscInt n,PetscInt i[],void *Ii,size_t size,void *work)
@@ -693,8 +742,6 @@ PetscErrorCode  PetscSortIntWithDataArray(PetscInt n,PetscInt i[],void *Ii,size_
 
    Level: intermediate
 
-   Concepts: merging^arrays
-
 .seealso: PetscSortReal(), PetscSortIntPermutation(), PetscSortInt(), PetscSortIntWithArray()
 @*/
 PetscErrorCode  PetscMergeIntArray(PetscInt an,const PetscInt aI[], PetscInt bn, const PetscInt bI[],  PetscInt *n, PetscInt **L)
@@ -724,11 +771,11 @@ PetscErrorCode  PetscMergeIntArray(PetscInt an,const PetscInt aI[], PetscInt bn,
     }
   }
   if (ak < an) {
-    ierr = PetscMemcpy(L_+k,aI+ak,(an-ak)*sizeof(PetscInt));CHKERRQ(ierr);
+    ierr = PetscArraycpy(L_+k,aI+ak,an-ak);CHKERRQ(ierr);
     k   += (an-ak);
   }
   if (bk < bn) {
-    ierr = PetscMemcpy(L_+k,bI+bk,(bn-bk)*sizeof(PetscInt));CHKERRQ(ierr);
+    ierr = PetscArraycpy(L_+k,bI+bk,bn-bk);CHKERRQ(ierr);
     k   += (bn-bk);
   }
   *n = k;
@@ -758,8 +805,6 @@ PetscErrorCode  PetscMergeIntArray(PetscInt an,const PetscInt aI[], PetscInt bn,
    Notes:
     if L or J point to non-null arrays then this routine will assume they are of the approproate size and use them, otherwise this routine will allocate space for them 
    Level: intermediate
-
-   Concepts: merging^arrays
 
 .seealso: PetscSortReal(), PetscSortIntPermutation(), PetscSortInt(), PetscSortIntWithArray()
 @*/
@@ -796,13 +841,13 @@ PetscErrorCode  PetscMergeIntArrayPair(PetscInt an,const PetscInt aI[], const Pe
     }
   }
   if (ak < an) {
-    ierr = PetscMemcpy(L_+k,aI+ak,(an-ak)*sizeof(PetscInt));CHKERRQ(ierr);
-    ierr = PetscMemcpy(J_+k,aJ+ak,(an-ak)*sizeof(PetscInt));CHKERRQ(ierr);
+    ierr = PetscArraycpy(L_+k,aI+ak,an-ak);CHKERRQ(ierr);
+    ierr = PetscArraycpy(J_+k,aJ+ak,an-ak);CHKERRQ(ierr);
     k   += (an-ak);
   }
   if (bk < bn) {
-    ierr = PetscMemcpy(L_+k,bI+bk,(bn-bk)*sizeof(PetscInt));CHKERRQ(ierr);
-    ierr = PetscMemcpy(J_+k,bJ+bk,(bn-bk)*sizeof(PetscInt));CHKERRQ(ierr);
+    ierr = PetscArraycpy(L_+k,bI+bk,bn-bk);CHKERRQ(ierr);
+    ierr = PetscArraycpy(J_+k,bJ+bk,bn-bk);CHKERRQ(ierr);
   }
   PetscFunctionReturn(0);
 }
@@ -823,8 +868,6 @@ PetscErrorCode  PetscMergeIntArrayPair(PetscInt an,const PetscInt aI[], const Pe
 -  L   - merged sorted array, allocated if address of NULL pointer is passed
 
    Level: intermediate
-
-   Concepts: merging^arrays
 
 .seealso: PetscSortReal(), PetscSortIntPermutation(), PetscSortInt(), PetscSortIntWithArray()
 @*/
@@ -929,7 +972,7 @@ PetscErrorCode  PetscProcessTree(PetscInt n,const PetscBool mask[],const PetscIn
     ierr = PetscSortIntWithArray(cnt,workparentid,workid);CHKERRQ(ierr);
     PetscIntView(cnt,workparentid,0);
     PetscIntView(cnt,workid,0);*/
-    ierr  = PetscMemcpy(idbylevel+tcnt,workid,cnt*sizeof(PetscInt));CHKERRQ(ierr);
+    ierr  = PetscArraycpy(idbylevel+tcnt,workid,cnt);CHKERRQ(ierr);
     tcnt += cnt;
   }
   if (tcnt != nmask) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_PLIB,"Inconsistent count of unmasked nodes");

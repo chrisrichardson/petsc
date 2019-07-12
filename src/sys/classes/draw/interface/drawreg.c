@@ -37,8 +37,6 @@ PetscFunctionList PetscDrawList = 0;
 
    Level: beginner
 
-.keywords: PetscDraw, view
-
 .seealso: PCView(), PetscViewerASCIIOpen()
 @*/
 PetscErrorCode  PetscDrawView(PetscDraw indraw,PetscViewer viewer)
@@ -93,7 +91,7 @@ PetscErrorCode  PetscDrawView(PetscDraw indraw,PetscViewer viewer)
 /*@C
    PetscDrawCreate - Creates a graphics context.
 
-   Collective on MPI_Comm
+   Collective
 
    Input Parameter:
 +  comm - MPI communicator
@@ -108,8 +106,6 @@ PetscErrorCode  PetscDrawView(PetscDraw indraw,PetscViewer viewer)
 
    Level: beginner
 
-   Concepts: graphics^creating context
-   Concepts: drawing^creating context
 
 .seealso: PetscDrawSetType(), PetscDrawSetFromOptions(), PetscDrawDestroy(), PetscDrawSetType(), PetscDrawLGCreate(), PetscDrawSPCreate(),
           PetscDrawViewPortsCreate(), PetscDrawViewPortsSet(), PetscDrawAxisCreate(), PetscDrawHGCreate(), PetscDrawBarCreate(),
@@ -193,10 +189,6 @@ PetscErrorCode  PetscDrawCreate(MPI_Comm comm,const char display[],const char ti
    Notes:
    See "petsc/include/petscdraw.h" for available methods (for instance,
    PETSC_DRAW_X, PETSC_DRAW_TIKZ or PETSC_DRAW_IMAGE)
-
-   Concepts: drawing^X windows
-   Concepts: X windows^graphics
-   Concepts: drawing^Microsoft Windows
 
 .seealso: PetscDrawSetFromOptions(), PetscDrawCreate(), PetscDrawDestroy(), PetscDrawType
 @*/
@@ -300,8 +292,6 @@ $     PetscDrawSetType(ksp,"my_draw_type")
    or at runtime via the option
 $     -draw_type my_draw_type
 
-   Concepts: graphics^registering new draw classes
-   Concepts: PetscDraw^registering new draw classes
 
 .seealso: PetscDrawRegisterAll(), PetscDrawRegisterDestroy(), PetscDrawType, PetscDrawSetType()
 @*/
@@ -326,8 +316,6 @@ PetscErrorCode  PetscDrawRegister(const char *sname,PetscErrorCode (*function)(P
 -  prefix - the prefix to prepend to all option names
 
    Level: advanced
-
-.keywords: PetscDraw, set, options, prefix, database
 
 .seealso: PetscDrawSetFromOptions(), PetscDrawCreate()
 @*/
@@ -367,8 +355,6 @@ PetscErrorCode  PetscDrawSetOptionsPrefix(PetscDraw draw,const char prefix[])
    Notes:
     Must be called after PetscDrawCreate() before the PetscDraw is used.
 
-   Concepts: drawing^setting options
-   Concepts: graphics^setting options
 
 .seealso: PetscDrawCreate(), PetscDrawSetType(), PetscDrawSetSave(), PetscDrawSetSaveFinalImage(), PetscDrawPause(), PetscDrawSetPause()
 
@@ -396,13 +382,9 @@ PetscErrorCode  PetscDrawSetFromOptions(PetscDraw draw)
     if (!nox) def = PETSC_DRAW_WIN32;
 #elif defined(PETSC_HAVE_X)
     if (!nox) def = PETSC_DRAW_X;
-#elif defined(PETSC_HAVE_GLUT)
-    if (!nox) def = PETSC_DRAW_GLUT;
-#elif defined(PETSC_HAVE_OPENGLES)
-    if (!nox) def = PETSC_DRAW_OPENGLES;
 #else
     ierr = PetscOptionsHasName(NULL,NULL,"-nox_warning",&warn);CHKERRQ(ierr);
-    if (!nox && !warn) (*PetscErrorPrintf)("PETSc installed without X windows, Microsoft Graphics, OpenGL ES, or GLUT/OpenGL on this machine\nproceeding without graphics\n");
+    if (!nox && !warn) (*PetscErrorPrintf)("PETSc installed without X windows or Microsoft Graphics on this machine\nproceeding without graphics\n");
 #endif
   }
   ierr = PetscObjectOptionsBegin((PetscObject)draw);CHKERRQ(ierr);

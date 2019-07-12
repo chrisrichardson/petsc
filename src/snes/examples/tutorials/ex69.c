@@ -3157,14 +3157,16 @@ static PetscErrorCode CreateMesh(MPI_Comm comm, AppCtx *user, DM *dm)
   PetscFunctionReturn(0);
 }
 
-static PetscErrorCode SetupProblem(PetscDS prob, AppCtx *user)
+static PetscErrorCode SetupProblem(DM dm, AppCtx *user)
 {
+  PetscDS        prob;
   const PetscInt id  = 1;
   PetscInt       comp;
   Parameter      *ctx;
   PetscErrorCode ierr;
 
   PetscFunctionBeginUser;
+  ierr = DMGetDS(dm, &prob);CHKERRQ(ierr);
   switch (user->solType) {
   case SOLKX:
     ierr = PetscDSSetResidual(prob, 0, f0_u, stokes_momentum_kx);CHKERRQ(ierr);
@@ -3250,7 +3252,6 @@ static PetscErrorCode SetupProblem(PetscDS prob, AppCtx *user)
   ierr = PetscDSAddBoundary(prob, DM_BC_ESSENTIAL, "wallT", "markerTop",    0, 1, &comp, (void (*)(void)) user->exactFuncs[0], 1, &id, ctx);CHKERRQ(ierr);
   comp = 0;
   ierr = PetscDSAddBoundary(prob, DM_BC_ESSENTIAL, "wallL", "markerLeft",   0, 1, &comp, (void (*)(void)) user->exactFuncs[0], 1, &id, ctx);CHKERRQ(ierr);
-  ierr = PetscDSSetFromOptions(prob);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
@@ -3260,7 +3261,6 @@ static PetscErrorCode SetupDiscretization(DM dm, AppCtx *user)
   const PetscInt  dim = user->dim;
   PetscFE         fe[2];
   PetscQuadrature q;
-  PetscDS         prob;
   MPI_Comm        comm;
   PetscErrorCode  ierr;
 
@@ -3274,12 +3274,12 @@ static PetscErrorCode SetupDiscretization(DM dm, AppCtx *user)
   ierr = PetscFESetQuadrature(fe[1], q);CHKERRQ(ierr);
   ierr = PetscObjectSetName((PetscObject) fe[1], "pressure");CHKERRQ(ierr);
   /* Set discretization and boundary conditions for each mesh */
-  ierr = DMGetDS(dm, &prob);CHKERRQ(ierr);
-  ierr = PetscDSSetDiscretization(prob, 0, (PetscObject) fe[0]);CHKERRQ(ierr);
-  ierr = PetscDSSetDiscretization(prob, 1, (PetscObject) fe[1]);CHKERRQ(ierr);
-  ierr = SetupProblem(prob, user);CHKERRQ(ierr);
+  ierr = DMSetField(dm, 0, NULL, (PetscObject) fe[0]);CHKERRQ(ierr);
+  ierr = DMSetField(dm, 1, NULL, (PetscObject) fe[1]);CHKERRQ(ierr);
+  ierr = DMCreateDS(dm);CHKERRQ(ierr);
+  ierr = SetupProblem(dm, user);CHKERRQ(ierr);
   while (cdm) {
-    ierr = DMSetDS(cdm, prob);CHKERRQ(ierr);
+    ierr = DMCopyDisc(dm, cdm);CHKERRQ(ierr);
     ierr = DMGetCoarseDM(cdm, &cdm);CHKERRQ(ierr);
   }
   ierr = PetscFEDestroy(&fe[0]);CHKERRQ(ierr);
@@ -3288,7 +3288,7 @@ static PetscErrorCode SetupDiscretization(DM dm, AppCtx *user)
     PetscObject  pressure;
     MatNullSpace nullSpacePres;
 
-    ierr = DMGetField(dm, 1, &pressure);CHKERRQ(ierr);
+    ierr = DMGetField(dm, 1, NULL, &pressure);CHKERRQ(ierr);
     ierr = MatNullSpaceCreate(PetscObjectComm(pressure), PETSC_TRUE, 0, NULL, &nullSpacePres);CHKERRQ(ierr);
     ierr = PetscObjectCompose(pressure, "nullspace", (PetscObject) nullSpacePres);CHKERRQ(ierr);
     ierr = MatNullSpaceDestroy(&nullSpacePres);CHKERRQ(ierr);
@@ -3481,13 +3481,13 @@ int main(int argc, char **argv)
     args: -petscpartitioner_type simple -dm_plex_separate_marker -simplex 0 -dm_refine 1 -vel_petscspace_degree 2 -pres_petscspace_degree 1 -pres_petscspace_poly_tensor 0 -pres_petscdualspace_lagrange_continuity 0 -snes_error_if_not_converged -snes_view -ksp_error_if_not_converged -dm_view -dm_mat_type is -ksp_type fetidp -ksp_fetidp_saddlepoint -ksp_fetidp_saddlepoint_flip -fetidp_ksp_type cg -fetidp_ksp_norm_type natural -fetidp_bddc_pc_bddc_detect_disconnected -fetidp_bddc_pc_bddc_symmetric -fetidp_bddc_pc_bddc_vertex_size 3 -fetidp_bddc_pc_bddc_graph_maxcount 2 -fetidp_bddc_pc_bddc_dirichlet_pc_type svd -fetidp_bddc_pc_bddc_neumann_pc_type svd -fetidp_bddc_pc_bddc_coarse_redundant_pc_type svd
   test:
     suffix: q2p1fetidp_deluxe
-    requires: mumps
+    requires: mumps double
     nsize: 5
     filter: grep -v "variant HERMITIAN" | grep -v "SNES iterations" | grep -v "solver iterations" | grep -v "evaluations="
     args: -petscpartitioner_type simple -dm_plex_separate_marker -simplex 0 -dm_refine 1 -vel_petscspace_degree 2 -pres_petscspace_degree 1 -pres_petscspace_poly_tensor 0 -pres_petscdualspace_lagrange_continuity 0 -snes_error_if_not_converged -ksp_error_if_not_converged -dm_view -dm_mat_type is -ksp_type fetidp -ksp_fetidp_saddlepoint -ksp_fetidp_saddlepoint_flip -fetidp_ksp_type cg -fetidp_ksp_norm_type natural -fetidp_bddc_pc_bddc_detect_disconnected -fetidp_bddc_pc_bddc_symmetric -fetidp_bddc_pc_bddc_vertex_size 3 -fetidp_bddc_pc_bddc_graph_maxcount 2 -fetidp_bddc_pc_bddc_use_deluxe_scaling -fetidp_bddc_pc_bddc_deluxe_singlemat -fetidp_bddc_pc_bddc_deluxe_zerorows -fetidp_bddc_sub_schurs_mat_mumps_icntl_14 500 -fetidp_bddc_pc_bddc_coarse_redundant_pc_type svd
   test:
     suffix: q2p1fetidp_deluxe_adaptive
-    requires: mumps
+    requires: mumps double
     nsize: 5
     filter: grep -v "variant HERMITIAN" | grep -v "SNES iterations" | grep -v "solver iterations" | grep -v "evaluations="
     args: -petscpartitioner_type simple -dm_plex_separate_marker -simplex 0 -dm_refine 1 -vel_petscspace_degree 2 -pres_petscspace_degree 1 -pres_petscspace_poly_tensor 0 -pres_petscdualspace_lagrange_continuity 0 -snes_error_if_not_converged -ksp_error_if_not_converged -dm_view -dm_mat_type is -ksp_type fetidp -ksp_fetidp_saddlepoint -ksp_fetidp_saddlepoint_flip -fetidp_ksp_type cg -fetidp_ksp_norm_type natural -fetidp_bddc_pc_bddc_detect_disconnected -fetidp_bddc_pc_bddc_symmetric -fetidp_bddc_pc_bddc_vertex_size 3 -fetidp_bddc_pc_bddc_graph_maxcount 2 -fetidp_bddc_pc_bddc_use_deluxe_scaling -fetidp_bddc_pc_bddc_deluxe_singlemat -fetidp_bddc_pc_bddc_adaptive_userdefined -fetidp_bddc_pc_bddc_adaptive_threshold 1.3 -fetidp_bddc_sub_schurs_mat_mumps_icntl_14 500 -fetidp_bddc_pc_bddc_coarse_redundant_pc_type svd

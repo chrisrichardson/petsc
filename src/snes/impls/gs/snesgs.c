@@ -21,8 +21,6 @@
 
    Level: intermediate
 
-.keywords: SNES, nonlinear, gauss-seidel, set, convergence, tolerances
-
 .seealso: SNESSetTrustRegionTolerance()
 @*/
 PetscErrorCode  SNESNGSSetTolerances(SNES snes,PetscReal abstol,PetscReal rtol,PetscReal stol,PetscInt maxit)
@@ -69,8 +67,6 @@ PetscErrorCode  SNESNGSSetTolerances(SNES snes,PetscReal abstol,PetscReal rtol,P
 
    Level: intermediate
 
-.keywords: SNES, nonlinear, get, convergence, tolerances
-
 .seealso: SNESSetTolerances()
 @*/
 PetscErrorCode  SNESNGSGetTolerances(SNES snes,PetscReal *atol,PetscReal *rtol,PetscReal *stol,PetscInt *maxit)
@@ -95,9 +91,7 @@ PetscErrorCode  SNESNGSGetTolerances(SNES snes,PetscReal *atol,PetscReal *rtol,P
 
    Level: intermediate
 
-.keywords: SNES, nonlinear, set, Gauss-Siedel
-
-.seealso: SNESSetNGS(), SNESGetNGS(), SNESSetPC(), SNESNGSGetSweeps()
+.seealso: SNESSetNGS(), SNESGetNGS(), SNESSetNPC(), SNESNGSGetSweeps()
 @*/
 
 PetscErrorCode SNESNGSSetSweeps(SNES snes, PetscInt sweeps)
@@ -121,9 +115,7 @@ PetscErrorCode SNESNGSSetSweeps(SNES snes, PetscInt sweeps)
 
    Level: intermediate
 
-.keywords: SNES, nonlinear, set, Gauss-Siedel
-
-.seealso: SNESSetNGS(), SNESGetNGS(), SNESSetPC(), SNESNGSSetSweeps()
+.seealso: SNESSetNGS(), SNESGetNGS(), SNESSetNPC(), SNESNGSSetSweeps()
 @*/
 PetscErrorCode SNESNGSGetSweeps(SNES snes, PetscInt * sweeps)
 {
@@ -327,7 +319,7 @@ PetscErrorCode SNESSolve_NGS(SNES snes)
 
 
   Notes:
-  the Gauss-Seidel smoother is inherited through composition.  If a solver has been created with SNESGetPC(), it will have
+  the Gauss-Seidel smoother is inherited through composition.  If a solver has been created with SNESGetNPC(), it will have
   its parent's Gauss-Seidel routine associated with it.
 
    References:

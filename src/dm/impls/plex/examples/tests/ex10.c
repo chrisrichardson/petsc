@@ -32,12 +32,12 @@ PetscErrorCode ProcessOptions(AppCtx *options)
   options->numGroups         = 0;
 
   ierr = PetscOptionsBegin(PETSC_COMM_SELF, "", "Meshing Problem Options", "DMPLEX");CHKERRQ(ierr);
-  ierr = PetscOptionsInt("-dim", "The topological mesh dimension", "ex10.c", options->dim, &options->dim, NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsRangeInt("-dim", "The topological mesh dimension", "ex10.c", options->dim, &options->dim, NULL,1,3);CHKERRQ(ierr);
   ierr = PetscOptionsBool("-cell_simplex", "Flag for simplices", "ex10.c", options->cellSimplex, &options->cellSimplex, NULL);CHKERRQ(ierr);
   ierr = PetscOptionsBool("-interpolate", "Flag for mesh interpolation", "ex10.c", options->interpolate, &options->interpolate, NULL);CHKERRQ(ierr);
   ierr = PetscOptionsBool("-refinement_uniform", "Uniformly refine the mesh", "ex10.c", options->refinementUniform, &options->refinementUniform, NULL);CHKERRQ(ierr);
   ierr = PetscOptionsReal("-refinement_limit", "The maximum volume of a refined cell", "ex10.c", options->refinementLimit, &options->refinementLimit, NULL);CHKERRQ(ierr);
-  ierr = PetscOptionsInt("-num_fields", "The number of section fields", "ex10.c", options->numFields, &options->numFields, NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsBoundedInt("-num_fields", "The number of section fields", "ex10.c", options->numFields, &options->numFields, NULL,1);CHKERRQ(ierr);
   if (options->numFields) {
     len  = options->numFields;
     ierr = PetscMalloc1(len, &options->numComponents);CHKERRQ(ierr);
@@ -48,7 +48,7 @@ PetscErrorCode ProcessOptions(AppCtx *options)
   ierr = PetscMalloc1(len, &options->numDof);CHKERRQ(ierr);
   ierr = PetscOptionsIntArray("-num_dof", "The dof signature for the section", "ex10.c", options->numDof, &len, &flg);CHKERRQ(ierr);
   if (flg && (len != (options->dim+1) * PetscMax(1, options->numFields))) SETERRQ2(PETSC_COMM_SELF, PETSC_ERR_ARG_WRONG, "Length of dof array is %D should be %D", len, (options->dim+1) * PetscMax(1, options->numFields));
-  ierr = PetscOptionsInt("-num_groups", "Group permutation by this many label values", "ex10.c", options->numGroups, &options->numGroups, NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsBoundedInt("-num_groups", "Group permutation by this many label values", "ex10.c", options->numGroups, &options->numGroups, NULL,0);CHKERRQ(ierr);
   ierr = PetscOptionsEnd();CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
@@ -117,7 +117,7 @@ PetscErrorCode CreateGroupLabel(DM dm, PetscInt numGroups, DMLabel *label, AppCt
   PetscFunctionBegin;
   if (numGroups < 2) {*label = NULL; PetscFunctionReturn(0);}
   if (numGroups != 2) SETERRQ1(PETSC_COMM_SELF, PETSC_ERR_ARG_OUTOFRANGE, "Test only coded for 2 groups, not %D", numGroups);
-  ierr = DMLabelCreate("groups", label);CHKERRQ(ierr);
+  ierr = DMLabelCreate(PETSC_COMM_SELF, "groups", label);CHKERRQ(ierr);
   for (c = 0; c < 10; ++c) {ierr = DMLabelSetValue(*label, groupA[c], 101);CHKERRQ(ierr);}
   for (c = 0; c < 6;  ++c) {ierr = DMLabelSetValue(*label, groupB[c], 1001);CHKERRQ(ierr);}
   PetscFunctionReturn(0);
@@ -161,14 +161,18 @@ int main(int argc, char **argv)
   if (user.numGroups < 1) {
     ierr = DMPlexCreateDoublet(PETSC_COMM_WORLD, user.dim, user.cellSimplex, user.interpolate, user.refinementUniform, user.refinementLimit, &dm);CHKERRQ(ierr);
     ierr = DMSetFromOptions(dm);CHKERRQ(ierr);
-    ierr = DMPlexCreateSection(dm, user.dim, user.numFields, user.numComponents, user.numDof, 0, NULL, NULL, NULL, NULL, &s);CHKERRQ(ierr);
+    ierr = DMSetNumFields(dm, user.numFields);CHKERRQ(ierr);
+    ierr = DMCreateDS(dm);CHKERRQ(ierr);
+    ierr = DMPlexCreateSection(dm, NULL, user.numComponents, user.numDof, 0, NULL, NULL, NULL, NULL, &s);CHKERRQ(ierr);
     ierr = DMSetSection(dm, s);CHKERRQ(ierr);
     ierr = PetscSectionDestroy(&s);CHKERRQ(ierr);
     ierr = TestReordering(dm, &user);CHKERRQ(ierr);
   } else {
     ierr = CreateTestMesh(PETSC_COMM_WORLD, &dm, &user);CHKERRQ(ierr);
     ierr = DMSetFromOptions(dm);CHKERRQ(ierr);
-    ierr = DMPlexCreateSection(dm, user.dim, user.numFields, user.numComponents, user.numDof, 0, NULL, NULL, NULL, NULL, &s);CHKERRQ(ierr);
+    ierr = DMSetNumFields(dm, user.numFields);CHKERRQ(ierr);
+    ierr = DMCreateDS(dm);CHKERRQ(ierr);
+    ierr = DMPlexCreateSection(dm, NULL, user.numComponents, user.numDof, 0, NULL, NULL, NULL, NULL, &s);CHKERRQ(ierr);
     ierr = DMSetSection(dm, s);CHKERRQ(ierr);
     ierr = PetscSectionDestroy(&s);CHKERRQ(ierr);
     ierr = TestReorderingByGroup(dm, &user);CHKERRQ(ierr);

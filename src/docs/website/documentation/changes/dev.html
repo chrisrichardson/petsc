@@ -34,6 +34,7 @@
               <a href="index.html">Changes</a>
               <ul>
                 <li><span class="current">dev</span></li>
+                <li><a href="311.html">3.11</a></li>
                 <li><a href="310.html">3.10</a></li>
                 <li><a href="39.html">3.9</a></li>
                 <li><a href="38.html">3.8</a></li>
@@ -101,38 +102,77 @@
       </div>
 
       <h4>General:</h4>
+        <ul>
+          <li>The legacy and cmake compile systems (make all-legacy and all-cmake) are removed</li>
+          <li>make gnumake is now make libs</li>
+          <li>PetscArraycmp() should be used instead of PetscMemcmp(), it takes a count argument instead of a byte argument</li>
+          <li>PetscArraycpy() should be used instead of PetscMemcpy(), it takes a count argument instead of a byte argument</li>
+          <li>PetscArrayzero() should be used instead of PetscMemzero(), it takes a count argument instead of a byte argument</li>
+          <li>PetscArraymove() should be used instead of PetscMemmove(), it takes a count argument instead of a byte argument</li>
+          <li>The ./configure options -with-gnu-compilers and -with-vendor-compilers are removed</li>
+          <li>The order ./configure tests compilers has changed so there may be a different compiler selected if you do not provide them</li>
+          <li>Added --with-64-bit-blas-indices that will switch to 64 bit indices when using MKL libraries for BLAS/LAPACK</li>
+          <li>Changed PETSC_DEPRECATED() to PETSC_DEPRECATED_FUNCTION() and PETSC_DEPRECATED_TYPEDEF() to match naming of PETSC_DEPRECATED_ENUM() and PETSC_DEPRECATED_MACRO</li>
+          <li>-help now causes the printing of the current value and the newly set value for PetscOptionsInt(), etc</li>
+          <li>PetscFunctionListPrintTypes() takes an additional final argument after the current value, the set value</li>
+          <li>PetscCalloc*() now calls the system calloc() routine instead of malloc() plus memzero()
+        </ul>
       <h4>Configure/Build:</h4>
       <h4>IS:</h4>
       <h4>PetscDraw:</h4>
       <h4>PF:</h4>
       <h4>Vec:</h4>
-      <h4>VecScatter:</h4>
       <ul>
-        <li>Changed VecScatterCreate() to VecScatterCreateWithData().</li>
-        <li>Introduced VecScatterSetData().</li>
-        <li>Introduced VecScatterCreate() that creates empty scatter object that can be used with VecScatterSetData().</li>
-        <li>Introduced VecScatterSetUp().</li>
+          <li>VecCUDAGet/RestoreArrayReadWrite() changed to VecCUDAGet/RestoreArray()</li>
+          <li>VecViennaCLGet/RestoreArrayReadWrite() changed to VecViennaCLGet/RestoreArray()</li>
         </ul>
+      <h4>VecScatter:</h4>
       <h4>PetscSection:</h4>
+      <h4>PetscSF:</h4>
+      <ul>
+        <li>PetscSFComputeMultiRootOriginalNumbering: add output argument with the number of multiroots for convenience</li>
+      </ul>
       <h4>Mat:</h4>
       <ul>
-        <li>MatRegisterBaseName() changed to MatRegisterRootName()</li>
+          <li>MatShift(Mat,0); will no longer silently insure there are no missing diagonal entries. (Previously it would put 0 into any diagonal entry that was missing</li>
+          <li>Renamed MatComputeExplicitOperator() into MatComputeOperator() and MatComputeExplicitOperatorTranpose() into MatComputeOperatorTranspose(). Added extra argument to select the desired matrix type</li>
+          <li>MatLoad() now supports loading dense matrices from HDF5/MAT files.</li>
         </ul>
       <h4>PC:</h4>
+        <ul>
+          <li>Renamed PCComputeExplicitOperator() into PCComputeOperator(). Added extra argument to select the desired matrix type</li>
+        </ul>
       <h4>KSP:</h4>
+        <ul>
+          <li>Renamed KSPComputeExplicitOperator() into KSPComputeOperator(). Added extra argument to select the desired matrix type</li>
+          <li> KSPCGGLTRGetMinEig(KSP,PetscReal*) -> KSPGLTRGetMinEig(KSP,PetscReal*)</li>
+          <li> KSPCGGLTRGetLambda(KSP,PetscReal*) ->  KSPGLTRGetLambda(KSP,PetscReal*)</li>
+          <li> KSPCGNASH, KSPCGSTCG, KSPCGGLTR -> KSPNASH, KSPSTCG, KSPGLTR</li>
+        </ul>
       <h4>SNES:</h4>
       <h4>SNESLineSearch:</h4>
       <h4>TS:</h4>
+        <ul>
+          <li>Added tangent linear models for Runge-Kutta methods</li>
+          <li>Added second-order adjoint solvers based on Runge-Kutta methods and Theta methods</li>
+          <li>Improved the usage of first-order adjoint solvers in an optimization context. (The TS object can be reused in the optimization loop)</li>
+          <li>Changed the APIs for integrand evaluations and corresponding derivative evaluations. TSSetCostIntegrand() is deprecated. (Instead a quadrature TS is used to handle the callbacks)</li>
+        </ul>
       <h4>DM/DA:</h4>
-      <ul>
-        <li>Added DMStag and associated functions, for working with quantities on regular staggered grids, in a manner similar to the usage of DMDA for colocated quantities.</li>
-        <li>Added DMLocalToGlobal() and DMLocalToGlobal()
-      </ul>
       <h4>DMPlex:</h4>
+        <ul>
+          <li>Rename DMPlexCreateSpectralClosurePermutation() to DMPlexSetClosurePermutationTensor()</li>
+          <li>Add DMPlexFindVertices() for vertex coordinates -> DAG point lookup</li>
+        </ul>
+      <h4>DMNetwork:</h4>
+        <ul>
+          <li>Changed prototypes for DMNetworkSetSizes()</li>
+        </ul>
       <h4>PetscViewer:</h4>
-      <ul>
-        <li>Added new command line options to GLVis viewer, see PetscViewerGLVisOpen() manual page for details.
-      </ul>
+        <ul>
+          <li>Removed PetscViewerHDF5{Get,Set}AIJNames() which are likely not really needed</li>
+          <li>PetscViewerHDF5SetCollective() and -viewer_hdf5_collective can be used to switch between independent and collective transfer mode. Defaults now to false (independent).
+        </ul>
       <h4>SYS:</h4>
       <h4>AO:</h4>
       <h4>Sieve:</h4>

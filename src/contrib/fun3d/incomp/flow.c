@@ -2090,7 +2090,7 @@ static PetscErrorCode GridCompleteOverlap(GRID *grid,PetscInt *invertices,PetscI
   ierr = VecSetType(VNodeEdgeInfoOv,VECSEQ);CHKERRQ(ierr);
 
   ierr = ISCreateBlock(PETSC_COMM_WORLD,2,nvertices,grid->loc2pet,PETSC_COPY_VALUES,&isglobal);CHKERRQ(ierr); /* Address the nodes in overlap to get info from */
-  ierr = VecScatterCreateWithData(VNodeEdgeInfo,isglobal,VNodeEdgeInfoOv,NULL,&neiscat);CHKERRQ(ierr);
+  ierr = VecScatterCreate(VNodeEdgeInfo,isglobal,VNodeEdgeInfoOv,NULL,&neiscat);CHKERRQ(ierr);
   ierr = VecScatterBegin(neiscat,VNodeEdgeInfo,VNodeEdgeInfoOv,INSERT_VALUES,SCATTER_FORWARD);CHKERRQ(ierr);
   ierr = VecScatterEnd(neiscat,VNodeEdgeInfo,VNodeEdgeInfoOv,INSERT_VALUES,SCATTER_FORWARD);CHKERRQ(ierr);
   ierr = VecScatterDestroy(&neiscat);CHKERRQ(ierr);
@@ -2109,7 +2109,7 @@ static PetscErrorCode GridCompleteOverlap(GRID *grid,PetscInt *invertices,PetscI
   ierr = VecRestoreArray(VNodeEdgeInfoOv,&vnei);CHKERRQ(ierr);
   ierr = ISCreateGeneral(PETSC_COMM_WORLD,nedgeOv,eIdxOv,PETSC_USE_POINTER,&isedgeOv);CHKERRQ(ierr);
   ierr = VecCreateSeq(PETSC_COMM_SELF,nedgeOv,&VNodeEdgeOv);CHKERRQ(ierr);
-  ierr = VecScatterCreateWithData(VNodeEdge,isedgeOv,VNodeEdgeOv,NULL,&nescat);CHKERRQ(ierr);
+  ierr = VecScatterCreate(VNodeEdge,isedgeOv,VNodeEdgeOv,NULL,&nescat);CHKERRQ(ierr);
   ierr = VecScatterBegin(nescat,VNodeEdge,VNodeEdgeOv,INSERT_VALUES,SCATTER_FORWARD);CHKERRQ(ierr);
   ierr = VecScatterEnd(nescat,VNodeEdge,VNodeEdgeOv,INSERT_VALUES,SCATTER_FORWARD);CHKERRQ(ierr);
   ierr = VecScatterDestroy(&nescat);CHKERRQ(ierr);
@@ -2193,13 +2193,14 @@ static PetscErrorCode WritePVTU(AppCtx *user,const char *fname,PetscBool base64)
   char              pvtu_fname[PETSC_MAX_PATH_LEN],vtu_fname[PETSC_MAX_PATH_LEN];
   MPI_Comm          comm;
   PetscMPIInt       rank,size;
-  PetscInt          i,nvertices = 0,nedgeLoc = 0,ncells,bs,nloc,boffset,*eptr = NULL;
+  PetscInt          i,nvertices = 0,nedgeLoc = 0,ncells,bs,nloc,boffset = 0,*eptr = NULL;
   PetscErrorCode    ierr;
   Vec               Xloc,Xploc,Xuloc;
   unsigned char     *celltype;
   int               *celloffset,*conn,*cellrank;
   const PetscScalar *x;
   PetscScalar       *xu,*xp;
+  const char        *byte_order = PetscBinaryBigEndian() ? "BigEndian" : "LittleEndian";
 
   PetscFunctionBegin;
   ierr = GridCompleteOverlap(user->grid,&nvertices,&nedgeLoc,&eptr);CHKERRQ(ierr);
@@ -2213,11 +2214,7 @@ static PetscErrorCode WritePVTU(AppCtx *user,const char *fname,PetscBool base64)
   ierr = PetscSNPrintf(vtu_fname,sizeof(vtu_fname),"%s-%D-%D.vtu",fname,tsCtx->itstep,rank);CHKERRQ(ierr);
   ierr = PetscFOpen(comm,pvtu_fname,"w",&pvtu);CHKERRQ(ierr);
   ierr = PetscFPrintf(comm,pvtu,"<?xml version=\"1.0\"?>\n");CHKERRQ(ierr);
-#if defined(PETSC_WORDS_BIGENDIAN)
-  ierr = PetscFPrintf(comm,pvtu,"<VTKFile type=\"PUnstructuredGrid\" version=\"0.1\" byte_order=\"BigEndian\">\n");CHKERRQ(ierr);
-#else
-  ierr = PetscFPrintf(comm,pvtu,"<VTKFile type=\"PUnstructuredGrid\" version=\"0.1\" byte_order=\"LittleEndian\">\n");CHKERRQ(ierr);
-#endif
+  ierr = PetscFPrintf(comm,pvtu,"<VTKFile type=\"PUnstructuredGrid\" version=\"0.1\" byte_order=\"%s\">\n",byte_order);CHKERRQ(ierr);
   ierr = PetscFPrintf(comm,pvtu," <PUnstructuredGrid GhostLevel=\"0\">\n");CHKERRQ(ierr);
   ierr = PetscFPrintf(comm,pvtu,"  <PPointData Scalars=\"Pressure\" Vectors=\"Velocity\">\n");CHKERRQ(ierr);
   ierr = PetscFPrintf(comm,pvtu,"   <PDataArray type=\"Float64\" Name=\"Pressure\" NumberOfComponents=\"1\" />\n");CHKERRQ(ierr);
@@ -2269,14 +2266,9 @@ static PetscErrorCode WritePVTU(AppCtx *user,const char *fname,PetscBool base64)
 
   ierr = InferLocalCellConnectivity(nvertices,nedgeLoc,eptr,&ncells,&conn);CHKERRQ(ierr);
 
-  ierr    = PetscFOpen(PETSC_COMM_SELF,vtu_fname,"w",&vtu);CHKERRQ(ierr);
-  boffset = 0;
-  ierr    = PetscFPrintf(PETSC_COMM_SELF,vtu,"<?xml version=\"1.0\"?>\n");CHKERRQ(ierr);
-#if defined(PETSC_WORDS_BIGENDIAN)
-  ierr = PetscFPrintf(PETSC_COMM_SELF,vtu,"<VTKFile type=\"UnstructuredGrid\" version=\"0.1\" byte_order=\"BigEndian\">\n");CHKERRQ(ierr);
-#else
-  ierr = PetscFPrintf(PETSC_COMM_SELF,vtu,"<VTKFile type=\"UnstructuredGrid\" version=\"0.1\" byte_order=\"LittleEndian\">\n");CHKERRQ(ierr);
-#endif
+  ierr = PetscFOpen(PETSC_COMM_SELF,vtu_fname,"w",&vtu);CHKERRQ(ierr);
+  ierr = PetscFPrintf(PETSC_COMM_SELF,vtu,"<?xml version=\"1.0\"?>\n");CHKERRQ(ierr);
+  ierr = PetscFPrintf(PETSC_COMM_SELF,vtu,"<VTKFile type=\"UnstructuredGrid\" version=\"0.1\" byte_order=\"%s\">\n",byte_order);CHKERRQ(ierr);
   ierr = PetscFPrintf(PETSC_COMM_SELF,vtu," <UnstructuredGrid>\n");CHKERRQ(ierr);
   ierr = PetscFPrintf(PETSC_COMM_SELF,vtu,"  <Piece NumberOfPoints=\"%D\" NumberOfCells=\"%D\">\n",nvertices,ncells);CHKERRQ(ierr);
 
@@ -2417,7 +2409,7 @@ int SetPetscDS(GRID *grid,TstepCtx *tsCtx)
   ierr = ISCreateGeneral(MPI_COMM_SELF,bs*nvertices,svertices,PETSC_COPY_VALUES,&isglobal);CHKERRQ(ierr);
 #endif
   ierr = PetscFree(svertices);CHKERRQ(ierr);
-  ierr = VecScatterCreateWithData(grid->qnode,isglobal,grid->qnodeLoc,islocal,&grid->scatter);CHKERRQ(ierr);
+  ierr = VecScatterCreate(grid->qnode,isglobal,grid->qnodeLoc,islocal,&grid->scatter);CHKERRQ(ierr);
   ierr = ISDestroy(&isglobal);CHKERRQ(ierr);
   ierr = ISDestroy(&islocal);CHKERRQ(ierr);
 
@@ -2441,7 +2433,7 @@ int SetPetscDS(GRID *grid,TstepCtx *tsCtx)
   ierr = ISCreateGeneral(MPI_COMM_SELF,3*bs*nvertices,svertices,PETSC_COPY_VALUES,&isglobal);CHKERRQ(ierr);
 #endif
   ierr = PetscFree(svertices);
-  ierr = VecScatterCreateWithData(grid->grad,isglobal,grid->gradLoc,islocal,&grid->gradScatter);CHKERRQ(ierr);
+  ierr = VecScatterCreate(grid->grad,isglobal,grid->gradLoc,islocal,&grid->gradScatter);CHKERRQ(ierr);
   ierr = ISDestroy(&isglobal);CHKERRQ(ierr);
   ierr = ISDestroy(&islocal);CHKERRQ(ierr);
 

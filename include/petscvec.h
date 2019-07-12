@@ -4,8 +4,8 @@
   on a grid. They have more mathematical structure then simple arrays.
 */
 
-#ifndef __PETSCVEC_H
-#define __PETSCVEC_H
+#ifndef PETSCVEC_H
+#define PETSCVEC_H
 #include <petscis.h>
 #include <petscviewer.h>
 
@@ -13,8 +13,6 @@
      Vec - Abstract PETSc vector object
 
    Level: beginner
-
-  Concepts: field variables, unknowns, arrays
 
 .seealso:  VecCreate(), VecType, VecSetType()
 S*/
@@ -26,9 +24,7 @@ typedef struct _p_Vec*         Vec;
 
    Level: beginner
 
-  Concepts: scatter
-
-.seealso:  VecScatterCreateWithData(), VecScatterBegin(), VecScatterEnd()
+.seealso:  VecScatterCreate(), VecScatterBegin(), VecScatterEnd()
 S*/
 typedef struct _p_VecScatter*  VecScatter;
 
@@ -42,45 +38,45 @@ E*/
 typedef enum {SCATTER_FORWARD=0, SCATTER_REVERSE=1, SCATTER_FORWARD_LOCAL=2, SCATTER_REVERSE_LOCAL=3, SCATTER_LOCAL=2} ScatterMode;
 
 /*MC
-    SCATTER_FORWARD - Scatters the values as dictated by the VecScatterCreateWithData() call
+    SCATTER_FORWARD - Scatters the values as dictated by the VecScatterCreate() call
 
     Level: beginner
 
-.seealso: VecScatter, ScatterMode, VecScatterCreateWithData(), VecScatterBegin(), VecScatterEnd(), SCATTER_REVERSE, SCATTER_FORWARD_LOCAL,
+.seealso: VecScatter, ScatterMode, VecScatterCreate(), VecScatterBegin(), VecScatterEnd(), SCATTER_REVERSE, SCATTER_FORWARD_LOCAL,
           SCATTER_REVERSE_LOCAL
 
 M*/
 
 /*MC
     SCATTER_REVERSE - Moves the values in the opposite direction then the directions indicated in
-         in the VecScatterCreateWithData()
+         in the VecScatterCreate()
 
     Level: beginner
 
-.seealso: VecScatter, ScatterMode, VecScatterCreateWithData(), VecScatterBegin(), VecScatterEnd(), SCATTER_FORWARD, SCATTER_FORWARD_LOCAL,
+.seealso: VecScatter, ScatterMode, VecScatterCreate(), VecScatterBegin(), VecScatterEnd(), SCATTER_FORWARD, SCATTER_FORWARD_LOCAL,
           SCATTER_REVERSE_LOCAL
 
 M*/
 
 /*MC
-    SCATTER_FORWARD_LOCAL - Scatters the values as dictated by the VecScatterCreateWithData() call except NO parallel communication
+    SCATTER_FORWARD_LOCAL - Scatters the values as dictated by the VecScatterCreate() call except NO parallel communication
        is done. Any variables that have be moved between processes are ignored
 
     Level: developer
 
-.seealso: VecScatter, ScatterMode, VecScatterCreateWithData(), VecScatterBegin(), VecScatterEnd(), SCATTER_REVERSE, SCATTER_FORWARD,
+.seealso: VecScatter, ScatterMode, VecScatterCreate(), VecScatterBegin(), VecScatterEnd(), SCATTER_REVERSE, SCATTER_FORWARD,
           SCATTER_REVERSE_LOCAL
 
 M*/
 
 /*MC
     SCATTER_REVERSE_LOCAL - Moves the values in the opposite direction then the directions indicated in
-         in the VecScatterCreateWithData()  except NO parallel communication
+         in the VecScatterCreate()  except NO parallel communication
        is done. Any variables that have be moved between processes are ignored
 
     Level: developer
 
-.seealso: VecScatter, ScatterMode, VecScatterCreateWithData(), VecScatterBegin(), VecScatterEnd(), SCATTER_FORWARD, SCATTER_FORWARD_LOCAL,
+.seealso: VecScatter, ScatterMode, VecScatterCreate(), VecScatterBegin(), VecScatterEnd(), SCATTER_FORWARD, SCATTER_FORWARD_LOCAL,
           SCATTER_REVERSE
 
 M*/
@@ -111,13 +107,14 @@ typedef const char* VecType;
 
    Level: beginner
 
-.seealso: VecScatterSetType(), VecScatter, VecScatterCreateWithData(), VecScatterDestroy()
+.seealso: VecScatterSetType(), VecScatter, VecScatterCreate(), VecScatterDestroy()
 J*/
 typedef const char* VecScatterType;
 #define VECSCATTERSEQ       "seq"
 #define VECSCATTERMPI1      "mpi1"
 #define VECSCATTERMPI3      "mpi3"     /* use MPI3 on-node shared memory */
 #define VECSCATTERMPI3NODE  "mpi3node" /* use MPI3 on-node shared memory for vector type VECNODE */
+#define VECSCATTERSF        "sf"       /* use StarForest */
 
 /* Dynamic creation and loading functions */
 PETSC_EXTERN PetscFunctionList VecScatterList;
@@ -125,7 +122,7 @@ PETSC_EXTERN PetscErrorCode VecScatterSetType(VecScatter, VecScatterType);
 PETSC_EXTERN PetscErrorCode VecScatterGetType(VecScatter, VecScatterType *);
 PETSC_EXTERN PetscErrorCode VecScatterSetFromOptions(VecScatter);
 PETSC_EXTERN PetscErrorCode VecScatterRegister(const char[],PetscErrorCode (*)(VecScatter));
-PETSC_EXTERN PetscErrorCode VecScatterCreateWithData(Vec,IS,Vec,IS,VecScatter*);
+PETSC_EXTERN PetscErrorCode VecScatterCreate(Vec,IS,Vec,IS,VecScatter*);
 PETSC_EXTERN PetscErrorCode VecScatterInitializePackage(void);
 PETSC_EXTERN PetscErrorCode VecScatterFinalizePackage(void);
 
@@ -341,8 +338,6 @@ PETSC_EXTERN PetscErrorCode VecSetType(Vec, VecType);
 PETSC_EXTERN PetscErrorCode VecGetType(Vec, VecType *);
 PETSC_EXTERN PetscErrorCode VecRegister(const char[],PetscErrorCode (*)(Vec));
 
-PETSC_EXTERN PetscErrorCode VecScatterSetData(VecScatter,Vec,IS,Vec,IS);
-PETSC_EXTERN PetscErrorCode VecScatterCreate(MPI_Comm,VecScatter *);
 PETSC_EXTERN PetscErrorCode VecScatterBegin(VecScatter,Vec,Vec,InsertMode,ScatterMode);
 PETSC_EXTERN PetscErrorCode VecScatterEnd(VecScatter,Vec,Vec,InsertMode,ScatterMode);
 PETSC_EXTERN PetscErrorCode VecScatterDestroy(VecScatter*);
@@ -361,6 +356,16 @@ PETSC_EXTERN PetscErrorCode VecGetArray2d(Vec,PetscInt,PetscInt,PetscInt,PetscIn
 PETSC_EXTERN PetscErrorCode VecRestoreArray2d(Vec,PetscInt,PetscInt,PetscInt,PetscInt,PetscScalar**[]);
 PETSC_EXTERN PetscErrorCode VecGetArray1d(Vec,PetscInt,PetscInt,PetscScalar *[]);
 PETSC_EXTERN PetscErrorCode VecRestoreArray1d(Vec,PetscInt,PetscInt,PetscScalar *[]);
+
+PETSC_EXTERN PetscErrorCode VecGetArray4dWrite(Vec,PetscInt,PetscInt,PetscInt,PetscInt,PetscInt,PetscInt,PetscInt,PetscInt,PetscScalar****[]);
+PETSC_EXTERN PetscErrorCode VecGetArray4dWrite(Vec,PetscInt,PetscInt,PetscInt,PetscInt,PetscInt,PetscInt,PetscInt,PetscInt,PetscScalar****[]);
+PETSC_EXTERN PetscErrorCode VecRestoreArray4dWrite(Vec,PetscInt,PetscInt,PetscInt,PetscInt,PetscInt,PetscInt,PetscInt,PetscInt,PetscScalar****[]);
+PETSC_EXTERN PetscErrorCode VecGetArray3dWrite(Vec,PetscInt,PetscInt,PetscInt,PetscInt,PetscInt,PetscInt,PetscScalar***[]);
+PETSC_EXTERN PetscErrorCode VecRestoreArray3dWrite(Vec,PetscInt,PetscInt,PetscInt,PetscInt,PetscInt,PetscInt,PetscScalar***[]);
+PETSC_EXTERN PetscErrorCode VecGetArray2dWrite(Vec,PetscInt,PetscInt,PetscInt,PetscInt,PetscScalar**[]);
+PETSC_EXTERN PetscErrorCode VecRestoreArray2dWrite(Vec,PetscInt,PetscInt,PetscInt,PetscInt,PetscScalar**[]);
+PETSC_EXTERN PetscErrorCode VecGetArray1dWrite(Vec,PetscInt,PetscInt,PetscScalar *[]);
+PETSC_EXTERN PetscErrorCode VecRestoreArray1dWrite(Vec,PetscInt,PetscInt,PetscScalar *[]);
 
 PETSC_EXTERN PetscErrorCode VecGetArray4dRead(Vec,PetscInt,PetscInt,PetscInt,PetscInt,PetscInt,PetscInt,PetscInt,PetscInt,PetscScalar****[]);
 PETSC_EXTERN PetscErrorCode VecRestoreArray4dRead(Vec,PetscInt,PetscInt,PetscInt,PetscInt,PetscInt,PetscInt,PetscInt,PetscInt,PetscScalar****[]);
@@ -435,13 +440,16 @@ PETSC_EXTERN PetscErrorCode VecMTDotBegin(Vec,PetscInt,const Vec[],PetscScalar[]
 PETSC_EXTERN PetscErrorCode VecMTDotEnd(Vec,PetscInt,const Vec[],PetscScalar[]);
 PETSC_EXTERN PetscErrorCode PetscCommSplitReductionBegin(MPI_Comm);
 
+PETSC_EXTERN PetscErrorCode VecPinToCPU(Vec,PetscBool);
 
 typedef enum {VEC_IGNORE_OFF_PROC_ENTRIES,VEC_IGNORE_NEGATIVE_INDICES,VEC_SUBSET_OFF_PROC_ENTRIES} VecOption;
 PETSC_EXTERN PetscErrorCode VecSetOption(Vec,VecOption,PetscBool );
 
 PETSC_EXTERN PetscErrorCode VecGetArray(Vec,PetscScalar**);
+PETSC_EXTERN PetscErrorCode VecGetArrayWrite(Vec,PetscScalar**);
 PETSC_EXTERN PetscErrorCode VecGetArrayRead(Vec,const PetscScalar**);
 PETSC_EXTERN PetscErrorCode VecRestoreArray(Vec,PetscScalar**);
+PETSC_EXTERN PetscErrorCode VecRestoreArrayWrite(Vec,PetscScalar**);
 PETSC_EXTERN PetscErrorCode VecRestoreArrayRead(Vec,const PetscScalar**);
 PETSC_EXTERN PetscErrorCode VecGetLocalVector(Vec,Vec);
 PETSC_EXTERN PetscErrorCode VecRestoreLocalVector(Vec,Vec);
@@ -451,7 +459,7 @@ PETSC_EXTERN PetscErrorCode VecRestoreLocalVectorRead(Vec,Vec);
 /*@C
    VecGetArrayPair - Accesses a pair of pointers for two vectors that may be common. When not common the first is read only
 
-   Logically Collective on Vec
+   Logically Collective on x
 
    Input Parameters:
 +  x - the vector
@@ -485,7 +493,7 @@ PETSC_STATIC_INLINE PetscErrorCode VecGetArrayPair(Vec x,Vec y,PetscScalar **xv,
 /*@C
    VecRestoreArrayPair - Returns a pair of pointers for two vectors that may be common. When not common the first is read only
 
-   Logically Collective on Vec
+   Logically Collective on x
 
    Input Parameters:
 +  x - the vector
@@ -515,15 +523,33 @@ PETSC_STATIC_INLINE PetscErrorCode VecRestoreArrayPair(Vec x,Vec y,PetscScalar *
 }
 
 #if defined(PETSC_USE_DEBUG)
+PETSC_EXTERN PetscErrorCode VecLockReadPush(Vec);
+PETSC_EXTERN PetscErrorCode VecLockReadPop(Vec);
+/* We also have a non-public VecLockWriteSet_Private() in vecimpl.h */
 PETSC_EXTERN PetscErrorCode VecLockGet(Vec,PetscInt*);
-PETSC_EXTERN PetscErrorCode VecLockPush(Vec);
-PETSC_EXTERN PetscErrorCode VecLockPop(Vec);
-#define VecLocked(x,arg) do {PetscInt _st; PetscErrorCode __ierr = VecLockGet(x,&_st); CHKERRQ(__ierr); if (_st > 0) SETERRQ1(PETSC_COMM_SELF,PETSC_ERR_ARG_WRONGSTATE," Vec is locked read only, argument # %d",arg);} while (0)
+PETSC_STATIC_INLINE PetscErrorCode VecSetErrorIfLocked(Vec x,PetscInt arg)
+{
+  PetscInt       state;
+  PetscErrorCode ierr;
+
+  PetscFunctionBegin;
+  ierr = VecLockGet(x,&state);CHKERRQ(ierr);
+  if (state != 0) SETERRQ1(PETSC_COMM_SELF,PETSC_ERR_ARG_WRONGSTATE," Vec is already locked for read-only or read/write access, argument # %d",arg);
+  PetscFunctionReturn(0);
+}
+/* The three are deprecated */
+PETSC_EXTERN PETSC_DEPRECATED_FUNCTION("Use VecLockReadPush() (since version 3.11)") PetscErrorCode VecLockPush(Vec);
+PETSC_EXTERN PETSC_DEPRECATED_FUNCTION("Use VecLockReadPop() (since version 3.11)")  PetscErrorCode VecLockPop(Vec);
+#define VecLocked(x,arg) VecSetErrorIfLocked(x,arg) PETSC_DEPRECATED_MACRO("GCC warning \"Use VecSetErrorIfLocked() (since version 3.11)\"")
 #else
-#define VecLockGet(x,arg)     *(arg) = 0
-#define VecLockPush(x)        0
-#define VecLockPop(x)         0
-#define VecLocked(x,arg)
+#define VecLockReadPush(x)           0
+#define VecLockReadPop(x)            0
+#define VecLockGet(x,s)              *(s) = 0
+#define VecSetErrorIfLocked(x,arg)   0
+/* The three are deprecated */
+#define VecLockPush(x)               0
+#define VecLockPop(x)                0
+#define VecLocked(x,arg)             0
 #endif
 
 PETSC_EXTERN PetscErrorCode VecValidValues(Vec,PetscInt,PetscBool);
@@ -551,6 +577,8 @@ PETSC_EXTERN PetscErrorCode VecGhostUpdateBegin(Vec,InsertMode,ScatterMode);
 PETSC_EXTERN PetscErrorCode VecGhostUpdateEnd(Vec,InsertMode,ScatterMode);
 
 PETSC_EXTERN PetscErrorCode VecConjugate(Vec);
+PETSC_EXTERN PetscErrorCode VecImaginaryPart(Vec);
+PETSC_EXTERN PetscErrorCode VecRealPart(Vec);
 
 PETSC_EXTERN PetscErrorCode VecScatterCreateToAll(Vec,VecScatter*,Vec*);
 PETSC_EXTERN PetscErrorCode VecScatterCreateToZero(Vec,VecScatter*,Vec*);
@@ -587,8 +615,6 @@ PETSC_EXTERN PetscErrorCode PetscViewerMathematicaPutVector(PetscViewer, Vec);
     This is faked by storing a single vector that has enough array space for
     n vectors
 
-  Concepts: parallel decomposition
-
 S*/
         struct _n_Vecs  {PetscInt n; Vec v;};
 typedef struct _n_Vecs* Vecs;
@@ -610,9 +636,9 @@ PETSC_EXTERN PetscErrorCode VecCreateMPIViennaCL(MPI_Comm,PetscInt,PetscInt,Vec*
 typedef struct _p_PetscCUDAIndices* PetscCUDAIndices;
 typedef struct _p_VecScatterCUDAIndices_StoS* VecScatterCUDAIndices_StoS;
 typedef struct _p_VecScatterCUDAIndices_PtoP* VecScatterCUDAIndices_PtoP;
-PETSC_EXTERN PetscErrorCode VecCUDACopyToGPUSome_Public(Vec,PetscCUDAIndices);
-PETSC_EXTERN PetscErrorCode VecCUDACopyFromGPUSome_Public(Vec,PetscCUDAIndices);
-PETSC_EXTERN PetscErrorCode VecScatterInitializeForGPU(VecScatter,Vec,ScatterMode);
+PETSC_EXTERN PetscErrorCode VecCUDACopyToGPUSome_Public(Vec,PetscCUDAIndices,ScatterMode);
+PETSC_EXTERN PetscErrorCode VecCUDACopyFromGPUSome_Public(Vec,PetscCUDAIndices,ScatterMode);
+PETSC_EXTERN PetscErrorCode VecScatterInitializeForGPU(VecScatter,Vec);
 PETSC_EXTERN PetscErrorCode VecScatterFinalizeForGPU(VecScatter);
 PETSC_EXTERN PetscErrorCode VecCreateSeqCUDA(MPI_Comm,PetscInt,Vec*);
 PETSC_EXTERN PetscErrorCode VecCreateSeqCUDAWithArray(MPI_Comm,PetscInt,PetscInt,const PetscScalar*,Vec*);

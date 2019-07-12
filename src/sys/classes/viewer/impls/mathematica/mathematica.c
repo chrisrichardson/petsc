@@ -18,7 +18,6 @@ static PetscBool PetscViewerMathematicaPackageInitialized = PETSC_FALSE;
 
   Level: developer
 
-.keywords: Petsc, destroy, package, mathematica
 .seealso: PetscFinalize()
 @*/
 PetscErrorCode  PetscViewerMathematicaFinalizePackage(void)
@@ -31,12 +30,10 @@ PetscErrorCode  PetscViewerMathematicaFinalizePackage(void)
 
 /*@C
   PetscViewerMathematicaInitializePackage - This function initializes everything in the Petsc interface to Mathematica. It is
-  called from PetscDLLibraryRegister() when using dynamic libraries, and on the call to PetscInitialize()
-  when using static libraries.
+  called from PetscViewerInitializePackage().
 
   Level: developer
 
-.keywords: Petsc, initialize, package
 .seealso: PetscSysInitializePackage(), PetscInitialize()
 @*/
 PetscErrorCode  PetscViewerMathematicaInitializePackage(void)
@@ -325,7 +322,7 @@ PetscErrorCode  PetscViewerMathematicaSetLinkMode(PetscViewer v, LinkMode mode)
 /*@C
   PetscViewerMathematicaOpen - Communicates with Mathemtica using MathLink.
 
-  Collective on comm
+  Collective
 
   Input Parameters:
 + comm    - The MPI communicator
@@ -357,8 +354,6 @@ $    VecView(Vec vector, PetscViewer viewer)
 .    -viewer_math_mode <mode>        - The mode, e.g. Launch, Connect
 .    -viewer_math_type <type>        - The plot type, e.g. Triangulation, Vector
 -    -viewer_math_graphics <output>  - The output type, e.g. Motif, PS, PSFile
-
-.keywords: PetscViewer, Mathematica, open
 
 .seealso: MatView(), VecView()
 @*/
@@ -538,7 +533,7 @@ PetscErrorCode  PetscViewerMathematicaGetVector(PetscViewer viewer, Vec v)
   ierr = PetscViewerMathematicaSkipPackets(viewer, RETURNPKT);CHKERRQ(ierr);
   MLGetRealList(link, &mArray, &mSize);
   if (n != mSize) SETERRQ2(PETSC_COMM_SELF,PETSC_ERR_ARG_WRONG, "Incompatible vector sizes %d %d",n,mSize);
-  ierr = PetscMemcpy(array, mArray, mSize * sizeof(double));CHKERRQ(ierr);
+  ierr = PetscArraycpy(array, mArray, mSize);CHKERRQ(ierr);
   MLDisownRealList(link, mArray, mSize);
   ierr = VecRestoreArray(v, &array);CHKERRQ(ierr);
   PetscFunctionReturn(0);

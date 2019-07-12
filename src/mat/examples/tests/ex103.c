@@ -73,7 +73,7 @@ int main(int argc, char** argv)
   if (isDense || isAIJ) {
     Mat Aexplicit;
     ierr = MatConvert(A, MATELEMENTAL, MAT_INITIAL_MATRIX, &A_elemental);CHKERRQ(ierr);
-    ierr = MatComputeExplicitOperator(A_elemental,&Aexplicit);CHKERRQ(ierr);
+    ierr = MatComputeOperator(A_elemental,isAIJ ? MATAIJ : MATDENSE,&Aexplicit);CHKERRQ(ierr);
     ierr = MatMultEqual(Aexplicit,A_elemental,5,&flg);CHKERRQ(ierr); 
     if (!flg) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_PLIB,"Aexplicit != A_elemental.");
     ierr = MatDestroy(&Aexplicit);CHKERRQ(ierr); 
@@ -103,18 +103,17 @@ int main(int argc, char** argv)
 
    test:
       nsize: 6
-      output_file: output/ex103.out
-
-   test:
-      suffix: 1
-      nsize: 6
-      args: -mat_type aij
-      output_file: output/ex103.out
 
    test:
       suffix: 2
       nsize: 6
+      args: -mat_type aij
+      output_file: output/ex103_1.out
+
+   test:
+      suffix: 3
+      nsize: 6
       args: -mat_type elemental
-      output_file: output/ex103.out
+      output_file: output/ex103_1.out
 
 TEST*/

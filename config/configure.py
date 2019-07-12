@@ -9,11 +9,11 @@ petsc_arch = ''
 if 'LC_LOCAL' in os.environ and os.environ['LC_LOCAL'] != '' and os.environ['LC_LOCAL'] != 'en_US' and os.environ['LC_LOCAL']!= 'en_US.UTF-8': os.environ['LC_LOCAL'] = 'en_US.UTF-8'
 if 'LANG' in os.environ and os.environ['LANG'] != '' and os.environ['LANG'] != 'en_US' and os.environ['LANG'] != 'en_US.UTF-8': os.environ['LANG'] = 'en_US.UTF-8'
 
-if not hasattr(sys, 'version_info') or not sys.version_info[0] == 2 or not sys.version_info[1] >= 6:
-  print('*******************************************************************************')
-  print('*       Python2 version 2.6 or higher is required to run ./configure          *')
-  print('*          Try: "python2.7 ./configure" or "python2.6 ./configure"            *')
-  print('*******************************************************************************')
+if sys.version_info < (2,6):
+  print('************************************************************************')
+  print('*      Python version 2.6+ or 3.4+ is required to run ./configure      *')
+  print('*         Try: "python2.7 ./configure" or "python3 ./configure"        *')
+  print('************************************************************************')
   sys.exit(4)
 
 def check_for_option_mistakes(opts):
@@ -38,7 +38,19 @@ def check_for_unsupported_combinations(opts):
 
 def check_for_option_changed(opts):
 # Document changes in command line options here.
-  optMap = [('with-64bit-indices','with-64-bit-indices'),('c-blas-lapack','f2cblaslapack'),('cholmod','suitesparse'),('umfpack','suitesparse'),('f-blas-lapack','fblaslapack'),('with-cuda-arch','CUDAFLAGS=-arch'),('with-packages-dir','with-packages-download-dir'),('with-external-packages-dir','with-packages-build-dir'),('package-dirs','with-packages-search-path'),('search-dirs','with-executables-search-path')]
+  optMap = [('with-64bit-indices','with-64-bit-indices'),
+            ('with-mpi-exec','with-mpiexec'),
+            ('c-blas-lapack','f2cblaslapack'),
+            ('cholmod','suitesparse'),
+            ('umfpack','suitesparse'),
+            ('f-blas-lapack','fblaslapack'),
+            ('with-cuda-arch',
+             'CUDAFLAGS=-arch'),
+            ('with-packages-dir','with-packages-download-dir'),
+            ('with-external-packages-dir','with-packages-build-dir'),
+            ('package-dirs','with-packages-search-path'),
+            ('download-petsc4py-python','with-python-exec'),
+            ('search-dirs','with-executables-search-path')]
   for opt in opts[1:]:
     optname = opt.split('=')[0].strip('-')
     for oldname,newname in optMap:
@@ -68,9 +80,14 @@ def chkenable():
   #Replace all 'enable-'/'disable-' with 'with-'=0/1/tail
   #enable-fortran is a special case, the resulting --with-fortran is ambiguous.
   #Would it mean --with-fc=
+  en_dash = u'\N{EN DASH}'
+  if sys.version_info < (3, 0):
+    en_dash = en_dash.encode('utf-8')
   for l in range(0,len(sys.argv)):
     name = sys.argv[l]
 
+    if name.find(en_dash)  >= 0:
+      sys.argv[l] = name.replace(en_dash,'-')
     if name.find('enable-cxx') >= 0:
       if name.find('=') == -1:
         sys.argv[l] = name.replace('enable-cxx','with-clanguage=C++')
@@ -114,30 +131,11 @@ def chkenable():
         if tail == '1': tail = '0'
         sys.argv[l] = head.replace('without-','with-')+'='+tail
 
-def argsAddDownload(value,deps = [],options = []):
-  # Adds --download-value to args if the command line DOES NOT already has --with-value or --download-value in it
-  # this is to prevent introducing conflicting arguments to ones that already exist
-  for opt in sys.argv[1:]:
-    optname = opt.split('=')[0].strip('-')
-    if optname in ['download-'+value,'with-'+value,'with-'+value+'-dir','with-'+value+'-include','with-'+value+'-lib']: return
-  sys.argv.append('--download-'+value)
-  for i in deps:
-    argsAddDownload(i)
-  for i in options:
-    sys.argv.append(i)
-
 def chksynonyms():
   #replace common configure options with ones that PETSc BuildSystem recognizes
-  downloadxsdk = 0
-  downloadideas = 0
+  simplereplacements = {'F77' : 'FC', 'F90' : 'FC'}
   for l in range(0,len(sys.argv)):
     name = sys.argv[l]
-
-    if name.find('download-xsdk=') >= 0 or name.endswith('download-xsdk'):
-      downloadxsdk = 1
-
-    if name.find('download-ideas=') >= 0 or name.endswith('download-ideas'):
-      downloadideas = 1
 
     if name.find('with-blas-lapack') >= 0:
       sys.argv[l] = name.replace('with-blas-lapack','with-blaslapack')
@@ -170,27 +168,11 @@ def chksynonyms():
       if tail.find('quad')>=0:
         sys.argv[l]='--with-precision=__float128'
 
-  if downloadideas:
-    downloadxsdk = 1
-    argsAddDownload('alquimia')
-    # mstk currently cannot build a shared library
-    argsAddDownload('mstk',[],['--download-mstk-shared=0'])
-    argsAddDownload('ascem-io')
-    argsAddDownload('unittestcpp')
-
-  if downloadxsdk:
-    # Common external libraries
-    argsAddDownload('pflotran')
-    argsAddDownload('hdf5',['zlib'])
-    argsAddDownload('netcdf')
-    argsAddDownload('metis')
-
-    argsAddDownload('superlu_dist',['parmetis'])
-
-    argsAddDownload('hypre')
-
-    argsAddDownload('trilinos',['boost','xsdktrilinos'],['--with-cxx-dialect=C++11'])
-
+    for i,j in simplereplacements.items():
+      if name.find(i+'=') >= 0:
+        sys.argv[l] = name.replace(i+'=',j+'=')
+      elif name.find('with-'+i.lower()+'=') >= 0:
+        sys.argv[l] = name.replace(i.lower()+'=',j.lower()+'=')
 
 def chkwinf90():
   for arg in sys.argv:
@@ -200,7 +182,7 @@ def chkwinf90():
 
 def chkdosfiles():
   # cygwin - but not a hg clone - so check one of files in bin dir
-  if "\r\n" in open(os.path.join('lib','petsc','bin','petscmpiexec'),"rb").read():
+  if b"\r\n" in open(os.path.join('lib','petsc','bin','petscmpiexec'),"rb").read():
     print('===============================================================================')
     print(' *** Scripts are in DOS mode. Was winzip used to extract petsc sources?    ****')
     print(' *** Please restart with a fresh tarball and use "tar -xzf petsc.tar.gz"   ****')
@@ -384,7 +366,7 @@ def petsc_configure(configure_options):
   sys.path.insert(0, configDir)
   import config.base
   import config.framework
-  import cPickle
+  import pickle
 
   framework = None
   try:
@@ -393,7 +375,7 @@ def petsc_configure(configure_options):
     framework.logPrint('\n'.join(extraLogs))
     framework.configure(out = sys.stdout)
     framework.storeSubstitutions(framework.argDB)
-    framework.argDB['configureCache'] = cPickle.dumps(framework)
+    framework.argDB['configureCache'] = pickle.dumps(framework)
     framework.printSummary()
     framework.argDB.save(force = True)
     framework.logClear()

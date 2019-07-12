@@ -33,9 +33,8 @@ struct _DMOps {
   PetscErrorCode (*createinterpolation)(DM,DM,Mat*,Vec*);
   PetscErrorCode (*createrestriction)(DM,DM,Mat*);
   PetscErrorCode (*createmassmatrix)(DM,DM,Mat*);
-  PetscErrorCode (*getaggregates)(DM,DM,Mat*);
   PetscErrorCode (*hascreateinjection)(DM,PetscBool*);
-  PetscErrorCode (*getinjection)(DM,DM,Mat*);
+  PetscErrorCode (*createinjection)(DM,DM,Mat*);
 
   PetscErrorCode (*refine)(DM,MPI_Comm,DM*);
   PetscErrorCode (*coarsen)(DM,MPI_Comm,DM*);
@@ -162,6 +161,18 @@ struct _n_Boundary {
   DMBoundary  next;
 };
 
+typedef struct _n_Field {
+  PetscObject disc;         /* Field discretization, or a PetscContainer with the field name */
+  DMLabel     label;        /* Label defining the domain of definition of the field */
+  PetscBool   adjacency[2]; /* Flags for defining variable influence (adjacency) for each field [use cone() or support() first, use the transitive closure] */
+} RegionField;
+
+typedef struct _n_Space {
+  PetscDS ds;     /* Approximation space in this domain */
+  DMLabel label;  /* Label defining the domain of definition of the discretization */
+  IS      fields; /* Map from DS field numbers to original field numbers in the DM */
+} DMSpace;
+
 PETSC_EXTERN PetscErrorCode DMDestroyLabelLinkList(DM);
 
 struct _p_DM {
@@ -186,6 +197,7 @@ struct _p_DM {
   PetscBool               structure_only; /* Flag indicating the DMCreateMatrix() create matrix structure without values */
   PetscInt                levelup,leveldown;  /* if the DM has been obtained by refining (or coarsening) this indicates how many times that process has been used to generate this DM */
   PetscBool               setupcalled;        /* Indicates that the DM has been set up, methods that modify a DM such that a fresh setup is required should reset this flag */
+  PetscBool               setfromoptionscalled;
   void                    *data;
   /* Hierarchy / Submeshes */
   DM                      coarseMesh;
@@ -204,12 +216,20 @@ struct _p_DM {
   PetscSF                 sfNatural;            /* SF mapping to the "natural" ordering */
   PetscBool               useNatural;           /* Create the natural SF */
   /* Allows a non-standard data layout */
+  PetscBool               adjacency[2];         /* [use cone() or support() first, use the transitive closure] */
   PetscSection            defaultSection;       /* Layout for local vectors */
   PetscSection            defaultGlobalSection; /* Layout for global vectors */
   PetscLayout             map;
   /* Constraints */
   PetscSection            defaultConstraintSection;
   Mat                     defaultConstraintMat;
+  /* Basis transformation */
+  DM                      transformDM;          /* Layout for basis transformation */
+  Vec                     transform;            /* Basis transformation matrices */
+  void                   *transformCtx;         /* Basis transformation context */
+  PetscErrorCode        (*transformSetUp)(DM, void *);
+  PetscErrorCode        (*transformDestroy)(DM, void *);
+  PetscErrorCode        (*transformGetMatrix)(DM, const PetscReal[], PetscBool, const PetscScalar **, void *);
   /* Coordinates */
   PetscInt                dimEmbed;             /* The dimension of the embedding space */
   DM                      coordinateDM;         /* Layout for coordinates (default section) */
@@ -224,8 +244,11 @@ struct _p_DM {
   NullSpaceFunc           nullspaceConstructors[10];
   NullSpaceFunc           nearnullspaceConstructors[10];
   /* Fields are represented by objects */
-  PetscDS                 prob;
-  DMBoundary              boundary;          /* List of boundary conditions */
+  PetscInt                Nf;                   /* Number of fields defined on the total domain */
+  RegionField            *fields;               /* Array of discretization fields with regions of validity */
+  DMBoundary              boundary;             /* List of boundary conditions */
+  PetscInt                Nds;                  /* Number of discrete systems defined on the total domain */
+  DMSpace                *probs;                /* Array of discrete systems */
   /* Output structures */
   DM                      dmBC;                 /* The DM with boundary conditions in the global DM */
   PetscInt                outputSequenceNum;    /* The current sequence number for output */
@@ -242,11 +265,11 @@ PETSC_EXTERN PetscLogEvent DM_Coarsen;
 PETSC_EXTERN PetscLogEvent DM_Refine;
 PETSC_EXTERN PetscLogEvent DM_CreateInterpolation;
 PETSC_EXTERN PetscLogEvent DM_CreateRestriction;
+PETSC_EXTERN PetscLogEvent DM_CreateInjection;
+PETSC_EXTERN PetscLogEvent DM_CreateMatrix;
 
 PETSC_EXTERN PetscErrorCode DMCreateGlobalVector_Section_Private(DM,Vec*);
 PETSC_EXTERN PetscErrorCode DMCreateLocalVector_Section_Private(DM,Vec*);
-PETSC_EXTERN PetscErrorCode DMCreateSubDM_Section_Private(DM,PetscInt,const PetscInt[],IS*,DM*);
-PETSC_EXTERN PetscErrorCode DMCreateSuperDM_Section_Private(DM[],PetscInt,IS**,DM*);
 
 PETSC_EXTERN PetscErrorCode DMView_GLVis(DM,PetscViewer,PetscErrorCode(*)(DM,PetscViewer));
 
@@ -437,5 +460,9 @@ PETSC_STATIC_INLINE PetscErrorCode DMGetGlobalFieldOffset_Private(DM dm, PetscIn
 #endif
   PetscFunctionReturn(0);
 }
+
+PETSC_EXTERN PetscErrorCode DMGetBasisTransformDM_Internal(DM, DM *);
+PETSC_EXTERN PetscErrorCode DMGetBasisTransformVec_Internal(DM, Vec *);
+PETSC_INTERN PetscErrorCode DMConstructBasisTransform_Internal(DM);
 
 #endif

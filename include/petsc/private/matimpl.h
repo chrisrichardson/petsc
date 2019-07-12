@@ -70,7 +70,7 @@ struct _MatOps {
   PetscErrorCode (*ilufactorsymbolic)(Mat,Mat,IS,IS,const MatFactorInfo*);
   PetscErrorCode (*iccfactorsymbolic)(Mat,Mat,IS,const MatFactorInfo*);
   PetscErrorCode (*getdiagonalblock)(Mat,Mat*);
-  PetscErrorCode (*placeholder_33)(Mat);
+  PetscErrorCode (*freeintermediatedatastructures)(Mat);
   /*34*/
   PetscErrorCode (*duplicate)(Mat,MatDuplicateOption,Mat*);
   PetscErrorCode (*forwardsolve)(Mat,Vec,Vec);
@@ -148,7 +148,7 @@ struct _MatOps {
   PetscErrorCode (*mattransposemult)(Mat,Mat,MatReuse,PetscReal,Mat*);
   PetscErrorCode (*mattransposemultsymbolic)(Mat,Mat,PetscReal,Mat*);
   PetscErrorCode (*mattransposemultnumeric)(Mat,Mat,Mat);
-  PetscErrorCode (*placeholder_98)(Mat);
+  PetscErrorCode (*pintocpu)(Mat,PetscBool);
   /*99*/
   PetscErrorCode (*placeholder_99)(Mat);
   PetscErrorCode (*placeholder_100)(Mat);
@@ -230,6 +230,8 @@ PETSC_EXTERN MatRootName MatRootNameList;
 */
 PETSC_INTERN PetscErrorCode MatFindNonzeroRowsOrCols_Basic(Mat,PetscBool,PetscReal,IS*);
 PETSC_INTERN PetscErrorCode MatConvert_Basic(Mat,MatType,MatReuse,Mat*);
+PETSC_INTERN PetscErrorCode MatConvert_Shell(Mat,MatType,MatReuse,Mat*);
+PETSC_INTERN PetscErrorCode MatConvertFrom_Shell(Mat,MatType,MatReuse,Mat*);
 PETSC_INTERN PetscErrorCode MatCopy_Basic(Mat,Mat,MatStructure);
 PETSC_INTERN PetscErrorCode MatDiagonalSet_Default(Mat,Vec,InsertMode);
 
@@ -305,8 +307,8 @@ struct _MatStash {
   PetscInt      reproduce_count;
 
   /* The following variables are used for BTS communication */
-  PetscBool      subset_off_proc; /* Subsequent assemblies will set a subset (perhaps equal) of off-process entries set on first assembly */
-  PetscBool      use_status;      /* Use MPI_Status to determine number of items in each message */
+  PetscBool      first_assembly_done;   /* Is the first time matrix assembly done? */
+  PetscBool      use_status;            /* Use MPI_Status to determine number of items in each message */
   PetscMPIInt    nsendranks;
   PetscMPIInt    nrecvranks;
   PetscMPIInt    *sendranks;
@@ -332,6 +334,9 @@ struct _MatStash {
   InsertMode     *insertmode;   /* Pointer to check mat->insertmode and set upon message arrival in case no local values have been set. */
 };
 
+#if !defined(PETSC_HAVE_MPIUNI)
+PETSC_INTERN PetscErrorCode MatStashScatterDestroy_BTS(MatStash*);
+#endif
 PETSC_INTERN PetscErrorCode MatStashCreate_Private(MPI_Comm,PetscInt,MatStash*);
 PETSC_INTERN PetscErrorCode MatStashDestroy_Private(MatStash*);
 PETSC_INTERN PetscErrorCode MatStashScatterEnd_Private(MatStash*);
@@ -380,6 +385,7 @@ struct _p_Mat {
   PetscBool              was_assembled;    /* new values inserted into assembled mat */
   PetscInt               num_ass;          /* number of times matrix has been assembled */
   PetscObjectState       nonzerostate;     /* each time new nonzeros locations are introduced into the matrix this is updated */
+  PetscObjectState       ass_nonzerostate; /* nonzero state at last assembly */
   MatInfo                info;             /* matrix information */
   InsertMode             insertmode;       /* have values been inserted in matrix or added? */
   MatStash               stash,bstash;     /* used for assembling off-proc mat emements */
@@ -393,11 +399,13 @@ struct _p_Mat {
   PetscBool              symmetric_set,hermitian_set,structurally_symmetric_set,spd_set; /* if true, then corresponding flag is correct*/
   PetscBool              symmetric_eternal;
   PetscBool              nooffprocentries,nooffproczerorows;
-  PetscBool              subsetoffprocentries;
-  PetscBool              submat_singleis; /* for efficient PCSetUP_ASM() */
+  PetscBool              assembly_subset;  /* set by MAT_SUBSET_OFF_PROC_ENTRIES */
+  PetscBool              submat_singleis;  /* for efficient PCSetUP_ASM() */
   PetscBool              structure_only;
+  PetscBool              sortedfull;       /* full, sorted rows are inserted */ 
 #if defined(PETSC_HAVE_VIENNACL) || defined(PETSC_HAVE_CUDA)
   PetscOffloadFlag       valid_GPU_matrix; /* flag pointing to the matrix on the gpu*/
+  PetscBool              pinnedtocpu;
 #endif
   void                   *spptr;          /* pointer for special library like SuperLU */
   char                   *solvertype;
@@ -416,6 +424,7 @@ struct _p_Mat {
 
 PETSC_INTERN PetscErrorCode MatAXPY_Basic(Mat,PetscScalar,Mat,MatStructure);
 PETSC_INTERN PetscErrorCode MatAXPY_BasicWithPreallocation(Mat,Mat,PetscScalar,Mat,MatStructure);
+PETSC_INTERN PetscErrorCode MatAXPY_Basic_Preallocate(Mat,Mat,Mat*);
 
 /*
     Utility for MatFactor (Schur complement)
@@ -441,6 +450,7 @@ struct _MatPartitioningOps {
   PetscErrorCode (*setfromoptions)(PetscOptionItems*,MatPartitioning);
   PetscErrorCode (*destroy)(MatPartitioning);
   PetscErrorCode (*view)(MatPartitioning,PetscViewer);
+  PetscErrorCode (*improve)(MatPartitioning,IS*);
 };
 
 struct _p_MatPartitioning {
@@ -532,6 +542,7 @@ struct  _p_MatFDColoring{
   PetscInt       ncolors;          /* number of colors */
   PetscInt       *ncolumns;        /* number of local columns for a color */
   PetscInt       **columns;        /* lists the local columns of each color (using global column numbering) */
+  IS             *isa;             /* these are the IS that contain the column values given in columns */
   PetscInt       *nrows;           /* number of local rows for each color */
   MatEntry       *matentry;        /* holds (row, column, address of value) for Jacobian matrix entry */
   MatEntry2      *matentry2;       /* holds (row, address of value) for Jacobian matrix entry */
@@ -1238,7 +1249,7 @@ PETSC_STATIC_INLINE PetscErrorCode MatPivotCheck(Mat fact,Mat mat,const MatFacto
     bt      - PetscBT (bitarray) with all bits set to false
 */
 #define PetscIncompleteLLClean(idx_start,lnk_max,nlnk,lnk,lnklvl,indices,indiceslvl,bt) 0;\
-{\
+do {\
   PetscInt _j,_idx=idx_start;\
   for (_j=0; _j<nlnk; _j++){\
     _idx = lnk[_idx];\
@@ -1248,23 +1259,23 @@ PETSC_STATIC_INLINE PetscErrorCode MatPivotCheck(Mat fact,Mat mat,const MatFacto
     ierr = PetscBTClear(bt,_idx);CHKERRQ(ierr);\
   }\
   lnk[idx_start] = lnk_max;\
-}
+} while (0)
 /*
   Free memories used by the list
 */
 #define PetscIncompleteLLDestroy(lnk,bt) (PetscFree(lnk) || PetscBTDestroy(&(bt)))
 
-#define MatCheckSameLocalSize(A,ar1,B,ar2) \
+#define MatCheckSameLocalSize(A,ar1,B,ar2) do { \
   PetscCheckSameComm(A,ar1,B,ar2); \
-  if ((A->rmap->n != B->rmap->n) || (A->cmap->n != B->cmap->n)) SETERRQ6(PETSC_COMM_SELF,PETSC_ERR_ARG_INCOMP,"Incompatible matrix local sizes: parameter # %d (%D x %D) != parameter # %d (%D x %D)",ar1,A->rmap->n,A->cmap->n,ar2,B->rmap->n,B->cmap->n);
-  
-#define MatCheckSameSize(A,ar1,B,ar2) \
+  if ((A->rmap->n != B->rmap->n) || (A->cmap->n != B->cmap->n)) SETERRQ6(PETSC_COMM_SELF,PETSC_ERR_ARG_INCOMP,"Incompatible matrix local sizes: parameter # %d (%D x %D) != parameter # %d (%D x %D)",ar1,A->rmap->n,A->cmap->n,ar2,B->rmap->n,B->cmap->n);} while (0)
+
+#define MatCheckSameSize(A,ar1,B,ar2) do { \
   if ((A->rmap->N != B->rmap->N) || (A->cmap->N != B->cmap->N)) SETERRQ6(PetscObjectComm((PetscObject)A),PETSC_ERR_ARG_INCOMP,"Incompatible matrix global sizes: parameter # %d (%D x %D) != parameter # %d (%D x %D)",ar1,A->rmap->N,A->cmap->N,ar2,B->rmap->N,B->cmap->N);\
-  MatCheckSameLocalSize(A,ar1,B,ar2);
-  
-#define VecCheckMatCompatible(M,x,ar1,b,ar2)                               \
-  if (M->cmap->N != x->map->N) SETERRQ3(PetscObjectComm((PetscObject)M),PETSC_ERR_ARG_SIZ,"Vector global length incompatible with matrix: parameter # %d global size %D != matrix column global size %D",ar1,x->map->N,M->cmap->N);\
-  if (M->rmap->N != b->map->N) SETERRQ3(PetscObjectComm((PetscObject)M),PETSC_ERR_ARG_SIZ,"Vector global length incompatible with matrix: parameter # %d global size %D != matrix row global size %D",ar2,b->map->N,M->rmap->N);
+  MatCheckSameLocalSize(A,ar1,B,ar2);} while (0)
+
+#define VecCheckMatCompatible(M,x,ar1,b,ar2) do { \
+  if (M->cmap->N != x->map->N) SETERRQ3(PetscObjectComm((PetscObject)M),PETSC_ERR_ARG_SIZ,"Vector global length incompatible with matrix: parameter # %d global size %D != matrix column global size %D",ar1,x->map->N,M->cmap->N); \
+  if (M->rmap->N != b->map->N) SETERRQ3(PetscObjectComm((PetscObject)M),PETSC_ERR_ARG_SIZ,"Vector global length incompatible with matrix: parameter # %d global size %D != matrix row global size %D",ar2,b->map->N,M->rmap->N);} while (0)
 
 /* -------------------------------------------------------------------------------------------------------*/
 #include <petscbt.h>
@@ -1700,7 +1711,6 @@ PETSC_EXTERN PetscLogEvent MAT_Applypapt;
 PETSC_EXTERN PetscLogEvent MAT_Applypapt_symbolic;
 PETSC_EXTERN PetscLogEvent MAT_Applypapt_numeric;
 PETSC_EXTERN PetscLogEvent MAT_Getsymtranspose;
-PETSC_EXTERN PetscLogEvent MAT_Transpose_SeqAIJ;
 PETSC_EXTERN PetscLogEvent MAT_Getsymtransreduced;
 PETSC_EXTERN PetscLogEvent MAT_GetSequentialNonzeroStructure;
 PETSC_EXTERN PetscLogEvent MATMFFD_Mult;

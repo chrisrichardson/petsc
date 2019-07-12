@@ -25,12 +25,11 @@ T*/
 int main(int argc,char **argv)
 {
   PetscErrorCode ierr;
+  PetscMPIInt    rank;
   int            i,imax=10000,icount;
-#if defined(PETSC_USE_LOG)
   PetscLogEvent  USER_EVENT,check_USER_EVENT;
-#endif
 
-  ierr = PetscInitialize(&argc,&argv,(char*)0,help);if (ierr) return ierr;
+  ierr = PetscInitialize(&argc,&argv,NULL,help);if (ierr) return ierr;
 
   /*
      Create a new user-defined event.
@@ -40,17 +39,15 @@ int main(int argc,char **argv)
       - The user can also optionally log floating point operations
         with the routine PetscLogFlops().
   */
-#if defined(PETSC_USE_LOG)
   ierr = PetscLogEventRegister("User event",PETSC_VIEWER_CLASSID,&USER_EVENT);CHKERRQ(ierr);
   ierr = PetscLogEventGetId("User event",&check_USER_EVENT);CHKERRQ(ierr);
   if (USER_EVENT != check_USER_EVENT) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_PLIB,"Event Ids do not match");
-#endif
-  ierr = PetscLogEventBegin(USER_EVENT,0,0,0,0);CHKERRQ(ierr);
 
+  ierr = PetscLogEventBegin(USER_EVENT,0,0,0,0);CHKERRQ(ierr);
   icount = 0;
   for (i=0; i<imax; i++) icount++;
   ierr = PetscLogFlops(imax);CHKERRQ(ierr);
-  ierr = PetscSleep(1);CHKERRQ(ierr);
+  ierr = PetscSleep(0.5);CHKERRQ(ierr);
   ierr = PetscLogEventEnd(USER_EVENT,0,0,0,0);CHKERRQ(ierr);
 
   /*
@@ -59,7 +56,7 @@ int main(int argc,char **argv)
   */
   ierr = PetscLogEventDeactivate(USER_EVENT);CHKERRQ(ierr);
   ierr = PetscLogEventBegin(USER_EVENT,0,0,0,0);CHKERRQ(ierr);
-  ierr = PetscSleep(1);CHKERRQ(ierr);
+  ierr = PetscSleep(0.5);CHKERRQ(ierr);
   ierr = PetscLogEventEnd(USER_EVENT,0,0,0,0);CHKERRQ(ierr);
 
   /*
@@ -67,7 +64,18 @@ int main(int argc,char **argv)
   */
   ierr = PetscLogEventActivate(USER_EVENT);CHKERRQ(ierr);
   ierr = PetscLogEventBegin(USER_EVENT,0,0,0,0);CHKERRQ(ierr);
-  ierr = PetscSleep(1);CHKERRQ(ierr);
+  ierr = PetscSleep(0.5);CHKERRQ(ierr);
+  ierr = PetscLogEventEnd(USER_EVENT,0,0,0,0);CHKERRQ(ierr);
+
+  /*
+     We test event logging imbalance
+  */
+  ierr = MPI_Comm_rank(PETSC_COMM_WORLD,&rank);CHKERRQ(ierr);
+  if (!rank) {ierr = PetscSleep(0.5);CHKERRQ(ierr);}
+  ierr = PetscLogEventSync(USER_EVENT,PETSC_COMM_WORLD);CHKERRQ(ierr);
+  ierr = PetscLogEventBegin(USER_EVENT,0,0,0,0);CHKERRQ(ierr);
+  ierr = MPI_Barrier(PETSC_COMM_WORLD);CHKERRQ(ierr);
+  ierr = PetscSleep(0.5);CHKERRQ(ierr);
   ierr = PetscLogEventEnd(USER_EVENT,0,0,0,0);CHKERRQ(ierr);
 
   ierr = PetscFinalize();
@@ -77,6 +85,9 @@ int main(int argc,char **argv)
 
 
 /*TEST
+
+   build:
+     requires: define(PETSC_USE_LOG)
 
    test:
 

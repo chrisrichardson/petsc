@@ -30,6 +30,16 @@
       End Interface
 
       Interface
+        Subroutine DMPlexRestoreConeOrientation(m,p,coneOrient,ierr)
+          use petscdmdef
+          PetscInt     p
+          PetscInt, pointer :: coneOrient(:)
+          PetscErrorCode ierr
+          DM m
+        End Subroutine
+      End Interface
+
+      Interface
         Subroutine DMPlexGetSupport(m,p,support,ierr)
           use petscdmdef
           PetscInt     p
@@ -189,16 +199,17 @@
       End Interface
 
       Interface
-        Subroutine DMPlexCreateSection(m,d,nF,nC,nD,nB,bF,bC,bP,pm,sc,e)
+        Subroutine DMPlexCreateSection(m,l,nC,nD,nB,bF,bC,bP,pm,sc,e)
           use petscdmdef
           PetscSection sc
-          PetscInt     d, nF, nB
+          PetscInt     nB
+          DMLabel,  pointer :: l(:)
           PetscInt, pointer :: nC(:)
           PetscInt, pointer :: nD(:)
           PetscInt, pointer :: bF(:)
-          IS,  pointer :: bC(:)
-          IS,  pointer :: bP(:)
-          IS pm
+          IS,       pointer :: bC(:)
+          IS,       pointer :: bP(:)
+          IS        pm
           PetscErrorCode e
           DM m
         End Subroutine
@@ -333,7 +344,7 @@
           use petscdmdef
           DM, intent(in) :: m
           PetscInt, intent(in) :: o
-          PetscSF, intent(out) :: sf
+          PetscSF :: sf
           DM, intent(out) :: mp
           PetscErrorCode, intent(out):: ierr
         End Subroutine

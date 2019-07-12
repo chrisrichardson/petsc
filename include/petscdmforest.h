@@ -1,8 +1,8 @@
 /*
   DMFOREST, for parallel, hierarchically refined, distributed mesh problems.
 */
-#if !defined(__PETSCDMFOREST_H)
-#define __PETSCDMFOREST_H
+#if !defined(PETSCDMFOREST_H)
+#define PETSCDMFOREST_H
 
 #include <petscdm.h>
 
@@ -86,6 +86,7 @@ PETSC_EXTERN PetscErrorCode DMForestGetAdaptivitySF(DM, PetscSF *, PetscSF *);
 PETSC_EXTERN PetscErrorCode DMForestGetAdaptivitySuccess(DM, PetscBool *);
 
 PETSC_EXTERN PetscErrorCode DMForestTransferVec(DM, Vec, DM, Vec, PetscBool, PetscReal);
+PETSC_EXTERN PetscErrorCode DMForestTransferVecFromBase(DM, Vec, Vec);
 
 /* for a quadtree/octree mesh, this is the x:1 condition: 1 indicates a uniform mesh,
  *                                                        2 indicates typical 2:1,

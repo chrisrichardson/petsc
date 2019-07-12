@@ -378,7 +378,7 @@ int main(int argc,char **args)
       /*
        Open a string viewer; then write info to it.
       */
-      ierr = PetscViewerStringOpen(PETSC_COMM_WORLD,kspinfo,120,&viewer);CHKERRQ(ierr);
+      ierr = PetscViewerStringOpen(PETSC_COMM_WORLD,kspinfo,sizeof(kspinfo),&viewer);CHKERRQ(ierr);
       ierr = KSPView(ksp,viewer);CHKERRQ(ierr);
       ierr = PetscStrrchr(file[PetscPreLoadIt],'/',&matrixname);CHKERRQ(ierr);
       ierr = PetscPrintf(PETSC_COMM_WORLD,"%-8.8s %3D %2.0e %s \n",matrixname,its,norm,kspinfo);CHKERRQ(ierr);
@@ -551,12 +551,6 @@ int main(int argc,char **args)
       args: -ksp_type fgmres -pc_type ksp -f0 ${DATAFILESPATH}/matrices/medium -ksp_fgmres_modifypcksp -ksp_monitor_short
 
    testset:
-      TODO: Need to determine goal of this test
-      suffix: 11
-      nsize: 2
-      args: -f0 http://ftp.mcs.anl.gov/pub/petsc/Datafiles/matrices/testmatrix.gz
-
-   testset:
       suffix: 12
       requires: matlab
       args: -pc_type lu -pc_factor_mat_solver_type matlab -f0 ${DATAFILESPATH}/matrices/arco1
@@ -587,6 +581,10 @@ int main(int argc,char **args)
          suffix: 17
          requires: hypre
          args: -pc_type hypre -pc_hypre_type boomeramg
+      test:
+         suffix: 18
+         requires: hypre
+         args: -pc_type hypre -pc_hypre_type euclid
 
    testset:
       suffix: 19

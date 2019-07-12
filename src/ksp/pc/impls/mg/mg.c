@@ -12,17 +12,11 @@ PetscErrorCode PCMGMCycle_Private(PC pc,PC_MG_Levels **mglevelsin,PCRichardsonCo
   PC_MG_Levels   *mgc,*mglevels = *mglevelsin;
   PetscErrorCode ierr;
   PetscInt       cycles = (mglevels->level == 1) ? 1 : (PetscInt) mglevels->cycles;
-  PC             subpc;
-  PCFailedReason pcreason;
 
   PetscFunctionBegin;
   if (mglevels->eventsmoothsolve) {ierr = PetscLogEventBegin(mglevels->eventsmoothsolve,0,0,0,0);CHKERRQ(ierr);}
   ierr = KSPSolve(mglevels->smoothd,mglevels->b,mglevels->x);CHKERRQ(ierr);  /* pre-smooth */
-  ierr = KSPGetPC(mglevels->smoothd,&subpc);CHKERRQ(ierr);
-  ierr = PCGetSetUpFailedReason(subpc,&pcreason);CHKERRQ(ierr);
-  if (pcreason) {
-    pc->failedreason = PC_SUBPC_ERROR;
-  }
+  ierr = KSPCheckSolve(mglevels->smoothd,pc,mglevels->x);CHKERRQ(ierr);
   if (mglevels->eventsmoothsolve) {ierr = PetscLogEventEnd(mglevels->eventsmoothsolve,0,0,0,0);CHKERRQ(ierr);}
   if (mglevels->level) {  /* not the coarsest grid */
     if (mglevels->eventresidual) {ierr = PetscLogEventBegin(mglevels->eventresidual,0,0,0,0);CHKERRQ(ierr);}
@@ -58,6 +52,7 @@ PetscErrorCode PCMGMCycle_Private(PC pc,PC_MG_Levels **mglevelsin,PCRichardsonCo
     if (mglevels->eventinterprestrict) {ierr = PetscLogEventEnd(mglevels->eventinterprestrict,0,0,0,0);CHKERRQ(ierr);}
     if (mglevels->eventsmoothsolve) {ierr = PetscLogEventBegin(mglevels->eventsmoothsolve,0,0,0,0);CHKERRQ(ierr);}
     ierr = KSPSolve(mglevels->smoothu,mglevels->b,mglevels->x);CHKERRQ(ierr);    /* post smooth */
+    ierr = KSPCheckSolve(mglevels->smoothu,pc,mglevels->x);CHKERRQ(ierr);
     if (mglevels->eventsmoothsolve) {ierr = PetscLogEventEnd(mglevels->eventsmoothsolve,0,0,0,0);CHKERRQ(ierr);}
   }
   PetscFunctionReturn(0);
@@ -172,29 +167,7 @@ PetscErrorCode PCReset_MG(PC pc)
   PetscFunctionReturn(0);
 }
 
-/*@C
-   PCMGSetLevels - Sets the number of levels to use with MG.
-   Must be called before any other MG routine.
-
-   Logically Collective on PC
-
-   Input Parameters:
-+  pc - the preconditioner context
-.  levels - the number of levels
--  comms - optional communicators for each level; this is to allow solving the coarser problems
-           on smaller sets of processors.
-
-   Level: intermediate
-
-   Notes:
-     If the number of levels is one then the multigrid uses the -mg_levels prefix
-  for setting the level options rather than the -mg_coarse prefix.
-
-.keywords: MG, set, levels, multigrid
-
-.seealso: PCMGSetType(), PCMGGetLevels()
-@*/
-PetscErrorCode  PCMGSetLevels(PC pc,PetscInt levels,MPI_Comm *comms)
+PetscErrorCode PCMGSetLevels_MG(PC pc,PetscInt levels,MPI_Comm *comms)
 {
   PetscErrorCode ierr;
   PC_MG          *mg        = (PC_MG*)pc->data;
@@ -295,6 +268,37 @@ PetscErrorCode  PCMGSetLevels(PC pc,PetscInt levels,MPI_Comm *comms)
   PetscFunctionReturn(0);
 }
 
+/*@C
+   PCMGSetLevels - Sets the number of levels to use with MG.
+   Must be called before any other MG routine.
+
+   Logically Collective on PC
+
+   Input Parameters:
++  pc - the preconditioner context
+.  levels - the number of levels
+-  comms - optional communicators for each level; this is to allow solving the coarser problems
+           on smaller sets of processors.
+
+   Level: intermediate
+
+   Notes:
+     If the number of levels is one then the multigrid uses the -mg_levels prefix
+  for setting the level options rather than the -mg_coarse prefix.
+
+.seealso: PCMGSetType(), PCMGGetLevels()
+@*/
+PetscErrorCode PCMGSetLevels(PC pc,PetscInt levels,MPI_Comm *comms)
+{
+  PetscErrorCode ierr;
+
+  PetscFunctionBegin;
+  PetscValidHeaderSpecific(pc,PC_CLASSID,1);
+  if (comms) PetscValidPointer(comms,3);
+  ierr = PetscTryMethod(pc,"PCMGSetLevels_C",(PC,PetscInt,MPI_Comm*),(pc,levels,comms));CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
 
 PetscErrorCode PCDestroy_MG(PC pc)
 {
@@ -317,6 +321,8 @@ PetscErrorCode PCDestroy_MG(PC pc)
     ierr = PetscFree(mg->levels);CHKERRQ(ierr);
   }
   ierr = PetscFree(pc->data);CHKERRQ(ierr);
+  ierr = PetscObjectComposeFunction((PetscObject)pc,"PCGetInterpolations_C",NULL);CHKERRQ(ierr);
+  ierr = PetscObjectComposeFunction((PetscObject)pc,"PCGetCoarseOperators_C",NULL);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
@@ -603,7 +609,7 @@ PetscErrorCode PCSetUp_MG(PC pc)
       ierr     = PCMGSetLevels(pc,levels,NULL);CHKERRQ(ierr);
       n        = levels;
       ierr     = PCSetFromOptions(pc);CHKERRQ(ierr); /* it is bad to call this here, but otherwise will never be called for the new hierarchy */
-      mglevels =  mg->levels;
+      mglevels = mg->levels;
     }
   }
   ierr = KSPGetPC(mglevels[0]->smoothd,&cpc);CHKERRQ(ierr);
@@ -621,11 +627,10 @@ PetscErrorCode PCSetUp_MG(PC pc)
 
   if (!opsset) {
     ierr = PCGetUseAmat(pc,&use_amat);CHKERRQ(ierr);
-    if(use_amat){
+    if (use_amat) {
       ierr = PetscInfo(pc,"Using outer operators to define finest grid operator \n  because PCMGGetSmoother(pc,nlevels-1,&ksp);KSPSetOperators(ksp,...); was not called.\n");CHKERRQ(ierr);
       ierr = KSPSetOperators(mglevels[n-1]->smoothd,pc->mat,pc->pmat);CHKERRQ(ierr);
-    }
-    else {
+    } else {
       ierr = PetscInfo(pc,"Using matrix (pmat) operators to define finest grid operator \n  because PCMGGetSmoother(pc,nlevels-1,&ksp);KSPSetOperators(ksp,...); was not called.\n");CHKERRQ(ierr);
       ierr = KSPSetOperators(mglevels[n-1]->smoothd,pc->pmat,pc->pmat);CHKERRQ(ierr);
     }
@@ -670,6 +675,10 @@ PetscErrorCode PCSetUp_MG(PC pc)
       PetscBool dmhasrestrict, dmhasinject;
       ierr = KSPSetDM(mglevels[i]->smoothd,dms[i]);CHKERRQ(ierr);
       if (!needRestricts) {ierr = KSPSetDMActive(mglevels[i]->smoothd,PETSC_FALSE);CHKERRQ(ierr);}
+      if (mglevels[i]->smoothd != mglevels[i]->smoothu) {
+        ierr = KSPSetDM(mglevels[i]->smoothu,dms[i]);CHKERRQ(ierr);
+        if (!needRestricts) {ierr = KSPSetDMActive(mglevels[i]->smoothu,PETSC_FALSE);CHKERRQ(ierr);}
+      }
       ierr = DMGetDMKSPWrite(dms[i],&kdm);CHKERRQ(ierr);
       /* Ugly hack so that the next KSPSetUp() will use the RHS that we set. A better fix is to change dmActive to take
        * a bitwise OR of computing the matrix, RHS, and initial iterate. */
@@ -704,6 +713,10 @@ PetscErrorCode PCSetUp_MG(PC pc)
     /* finest smoother also gets DM but it is not active, independent of whether galerkin==PC_MG_GALERKIN_EXTERNAL */
     ierr = KSPSetDM(mglevels[n-1]->smoothd,pc->dm);CHKERRQ(ierr);
     ierr = KSPSetDMActive(mglevels[n-1]->smoothd,PETSC_FALSE);CHKERRQ(ierr);
+    if (mglevels[n-1]->smoothd != mglevels[n-1]->smoothu) {
+      ierr = KSPSetDM(mglevels[n-1]->smoothu,pc->dm);CHKERRQ(ierr);
+      ierr = KSPSetDMActive(mglevels[n-1]->smoothu,PETSC_FALSE);CHKERRQ(ierr);
+    }
   }
 
   if (mg->galerkin < PC_MG_GALERKIN_NONE) {
@@ -843,7 +856,7 @@ PetscErrorCode PCSetUp_MG(PC pc)
     }
     if (mglevels[i]->eventsmoothsetup) {ierr = PetscLogEventBegin(mglevels[i]->eventsmoothsetup,0,0,0,0);CHKERRQ(ierr);}
     ierr = KSPSetUp(mglevels[i]->smoothd);CHKERRQ(ierr);
-    if (mglevels[i]->smoothd->reason == KSP_DIVERGED_PCSETUP_FAILED) {
+    if (mglevels[i]->smoothd->reason == KSP_DIVERGED_PC_FAILED) {
       pc->failedreason = PC_SUBPC_ERROR;
     }
     if (mglevels[i]->eventsmoothsetup) {ierr = PetscLogEventEnd(mglevels[i]->eventsmoothsetup,0,0,0,0);CHKERRQ(ierr);}
@@ -867,7 +880,7 @@ PetscErrorCode PCSetUp_MG(PC pc)
       ierr = KSPSetInitialGuessNonzero(mglevels[i]->smoothu,PETSC_TRUE);CHKERRQ(ierr);
       if (mglevels[i]->eventsmoothsetup) {ierr = PetscLogEventBegin(mglevels[i]->eventsmoothsetup,0,0,0,0);CHKERRQ(ierr);}
       ierr = KSPSetUp(mglevels[i]->smoothu);CHKERRQ(ierr);
-      if (mglevels[i]->smoothu->reason == KSP_DIVERGED_PCSETUP_FAILED) {
+      if (mglevels[i]->smoothu->reason == KSP_DIVERGED_PC_FAILED) {
         pc->failedreason = PC_SUBPC_ERROR;
       }
       if (mglevels[i]->eventsmoothsetup) {ierr = PetscLogEventEnd(mglevels[i]->eventsmoothsetup,0,0,0,0);CHKERRQ(ierr);}
@@ -876,7 +889,7 @@ PetscErrorCode PCSetUp_MG(PC pc)
 
   if (mglevels[0]->eventsmoothsetup) {ierr = PetscLogEventBegin(mglevels[0]->eventsmoothsetup,0,0,0,0);CHKERRQ(ierr);}
   ierr = KSPSetUp(mglevels[0]->smoothd);CHKERRQ(ierr);
-  if (mglevels[0]->smoothd->reason == KSP_DIVERGED_PCSETUP_FAILED) {
+  if (mglevels[0]->smoothd->reason == KSP_DIVERGED_PC_FAILED) {
     pc->failedreason = PC_SUBPC_ERROR;
   }
   if (mglevels[0]->eventsmoothsetup) {ierr = PetscLogEventEnd(mglevels[0]->eventsmoothsetup,0,0,0,0);CHKERRQ(ierr);}
@@ -910,6 +923,15 @@ PetscErrorCode PCSetUp_MG(PC pc)
 
 /* -------------------------------------------------------------------------------------*/
 
+PetscErrorCode PCMGGetLevels_MG(PC pc, PetscInt *levels)
+{
+  PC_MG *mg = (PC_MG *) pc->data;
+
+  PetscFunctionBegin;
+  *levels = mg->nlevels;
+  PetscFunctionReturn(0);
+}
+
 /*@
    PCMGGetLevels - Gets the number of levels to use with MG.
 
@@ -923,18 +945,17 @@ PetscErrorCode PCSetUp_MG(PC pc)
 
    Level: advanced
 
-.keywords: MG, get, levels, multigrid
-
 .seealso: PCMGSetLevels()
 @*/
-PetscErrorCode  PCMGGetLevels(PC pc,PetscInt *levels)
+PetscErrorCode PCMGGetLevels(PC pc,PetscInt *levels)
 {
-  PC_MG *mg = (PC_MG*)pc->data;
+  PetscErrorCode ierr;
 
   PetscFunctionBegin;
   PetscValidHeaderSpecific(pc,PC_CLASSID,1);
   PetscValidIntPointer(levels,2);
-  *levels = mg->nlevels;
+  *levels = 0;
+  ierr = PetscTryMethod(pc,"PCMGGetLevels_C",(PC,PetscInt*),(pc,levels));CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
@@ -954,8 +975,6 @@ PetscErrorCode  PCMGGetLevels(PC pc,PetscInt *levels)
    additive, full, kaskade
 
    Level: advanced
-
-.keywords: MG, set, method, multiplicative, additive, full, Kaskade, multigrid
 
 .seealso: PCMGSetLevels()
 @*/
@@ -987,8 +1006,6 @@ PetscErrorCode  PCMGSetType(PC pc,PCMGType form)
 
    Level: advanced
 
-.keywords: MG, set, method, multiplicative, additive, full, Kaskade, multigrid
-
 .seealso: PCMGSetLevels()
 @*/
 PetscErrorCode  PCMGGetType(PC pc,PCMGType *type)
@@ -1015,8 +1032,6 @@ PetscErrorCode  PCMGGetType(PC pc,PCMGType *type)
 .  -pc_mg_cycle_type <v,w> - provide the cycle desired
 
    Level: advanced
-
-.keywords: MG, set, cycles, V-cycle, W-cycle, multigrid
 
 .seealso: PCMGSetCycleTypeOnLevel()
 @*/
@@ -1052,8 +1067,6 @@ PetscErrorCode  PCMGSetCycleType(PC pc,PCMGCycleType n)
 
    Notes:
     This is not associated with setting a v or w cycle, that is set with PCMGSetCycleType()
-
-.keywords: MG, set, cycles, V-cycle, W-cycle, multigrid
 
 .seealso: PCMGSetCycleTypeOnLevel(), PCMGSetCycleType()
 @*/
@@ -1096,8 +1109,6 @@ PetscErrorCode PCMGSetGalerkin_MG(PC pc,PCMGGalerkinType use)
     Some codes that use PCMG such as PCGAMG use Galerkin internally while constructing the hierarchy and thus do not
      use the PCMG construction of the coarser grids.
 
-.keywords: MG, set, Galerkin
-
 .seealso: PCMGGetGalerkin(), PCMGGalerkinType
 
 @*/
@@ -1124,8 +1135,6 @@ PetscErrorCode PCMGSetGalerkin(PC pc,PCMGGalerkinType use)
 .  galerkin - one of PC_MG_GALERKIN_BOTH,PC_MG_GALERKIN_PMAT,PC_MG_GALERKIN_MAT, PC_MG_GALERKIN_NONE, or PC_MG_GALERKIN_EXTERNAL
 
    Level: intermediate
-
-.keywords: MG, set, Galerkin
 
 .seealso: PCMGSetGalerkin(), PCMGGalerkinType
 
@@ -1159,8 +1168,6 @@ PetscErrorCode  PCMGGetGalerkin(PC pc,PCMGGalerkinType  *galerkin)
    Notes:
     this does not set a value on the coarsest grid, since we assume that
     there is no separate smooth up on the coarsest grid.
-
-.keywords: MG, smooth, up, post-smoothing, steps, multigrid
 
 .seealso: PCMGSetDistinctSmoothUp()
 @*/
@@ -1204,8 +1211,6 @@ PetscErrorCode  PCMGSetNumberSmooth(PC pc,PetscInt n)
     this does not set a value on the coarsest grid, since we assume that
     there is no separate smooth up on the coarsest grid.
 
-.keywords: MG, smooth, up, post-smoothing, steps, multigrid
-
 .seealso: PCMGSetNumberSmooth()
 @*/
 PetscErrorCode  PCMGSetDistinctSmoothUp(PC pc)
@@ -1229,6 +1234,48 @@ PetscErrorCode  PCMGSetDistinctSmoothUp(PC pc)
     ierr = KSPSetOptionsPrefix(subksp,prefix);CHKERRQ(ierr);
     ierr = KSPAppendOptionsPrefix(subksp,"up_");CHKERRQ(ierr);
   }
+  PetscFunctionReturn(0);
+}
+
+/* No new matrices are created, and the coarse operator matrices are the references to the original ones */
+PetscErrorCode  PCGetInterpolations_MG(PC pc,PetscInt *num_levels,Mat *interpolations[])
+{
+  PC_MG          *mg        = (PC_MG*)pc->data;
+  PC_MG_Levels   **mglevels = mg->levels;
+  Mat            *mat;
+  PetscInt       l;
+  PetscErrorCode ierr;
+
+  PetscFunctionBegin;
+  if (!mglevels) SETERRQ(PetscObjectComm((PetscObject)pc),PETSC_ERR_ARG_WRONGSTATE,"Must set MG levels before calling");
+  ierr = PetscMalloc1(mg->nlevels,&mat);CHKERRQ(ierr);
+  for (l=1; l< mg->nlevels; l++) {
+    mat[l-1] = mglevels[l]->interpolate;
+    ierr = PetscObjectReference((PetscObject)mat[l-1]);CHKERRQ(ierr);
+  }
+  *num_levels = mg->nlevels;
+  *interpolations = mat;
+  PetscFunctionReturn(0);
+}
+
+/* No new matrices are created, and the coarse operator matrices are the references to the original ones */
+PetscErrorCode  PCGetCoarseOperators_MG(PC pc,PetscInt *num_levels,Mat *coarseOperators[])
+{
+  PC_MG          *mg        = (PC_MG*)pc->data;
+  PC_MG_Levels   **mglevels = mg->levels;
+  PetscInt       l;
+  Mat            *mat;
+  PetscErrorCode ierr;
+
+  PetscFunctionBegin;
+  if (!mglevels) SETERRQ(PetscObjectComm((PetscObject)pc),PETSC_ERR_ARG_WRONGSTATE,"Must set MG levels before calling");
+  ierr = PetscMalloc1(mg->nlevels,&mat);CHKERRQ(ierr);
+  for (l=0; l<mg->nlevels-1; l++) {
+    ierr = KSPGetOperators(mglevels[l]->smoothd,NULL,&(mat[l]));CHKERRQ(ierr);
+    ierr = PetscObjectReference((PetscObject)mat[l]);CHKERRQ(ierr);
+  }
+  *num_levels = mg->nlevels;
+  *coarseOperators = mat;
   PetscFunctionReturn(0);
 }
 
@@ -1263,8 +1310,6 @@ PetscErrorCode  PCMGSetDistinctSmoothUp(PC pc)
 
    Level: intermediate
 
-   Concepts: multigrid/multilevel
-
 .seealso:  PCCreate(), PCSetType(), PCType (for list of available types), PC, PCMGType, PCEXOTIC, PCGAMG, PCML, PCHYPRE
            PCMGSetLevels(), PCMGGetLevels(), PCMGSetType(), PCMGSetCycleType(),
            PCMGSetDistinctSmoothUp(), PCMGGetCoarseSolve(), PCMGSetResidual(), PCMGSetInterpolation(),
@@ -1294,5 +1339,9 @@ PETSC_EXTERN PetscErrorCode PCCreate_MG(PC pc)
   pc->ops->view           = PCView_MG;
 
   ierr = PetscObjectComposeFunction((PetscObject)pc,"PCMGSetGalerkin_C",PCMGSetGalerkin_MG);CHKERRQ(ierr);
+  ierr = PetscObjectComposeFunction((PetscObject)pc,"PCMGGetLevels_C",PCMGGetLevels_MG);CHKERRQ(ierr);
+  ierr = PetscObjectComposeFunction((PetscObject)pc,"PCMGSetLevels_C",PCMGSetLevels_MG);CHKERRQ(ierr);
+  ierr = PetscObjectComposeFunction((PetscObject)pc,"PCGetInterpolations_C",PCGetInterpolations_MG);CHKERRQ(ierr);
+  ierr = PetscObjectComposeFunction((PetscObject)pc,"PCGetCoarseOperators_C",PCGetCoarseOperators_MG);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }

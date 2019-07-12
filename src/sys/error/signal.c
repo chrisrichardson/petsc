@@ -56,8 +56,6 @@ static void PetscSignalHandler_Private(int sig)
 +  sig - signal value
 -  ptr - unused pointer
 
-   Concepts: signal handler^default
-
 @*/
 PetscErrorCode  PetscSignalHandlerDefault(int sig,void *ptr)
 {
@@ -65,6 +63,7 @@ PetscErrorCode  PetscSignalHandlerDefault(int sig,void *ptr)
   const char     *SIGNAME[64];
 
   PetscFunctionBegin;
+  if (sig == SIGSEGV) PetscSignalSegvCheckPointer();
   SIGNAME[0]       = "Unknown signal";
 #if !defined(PETSC_MISSING_SIGABRT)
   SIGNAME[SIGABRT] = "Abort";
@@ -133,7 +132,7 @@ PetscErrorCode  PetscSignalHandlerDefault(int sig,void *ptr)
   else (*PetscErrorPrintf)("Caught signal\n");
 
   (*PetscErrorPrintf)("Try option -start_in_debugger or -on_error_attach_debugger\n");
-  (*PetscErrorPrintf)("or see http://www.mcs.anl.gov/petsc/documentation/faq.html#valgrind\n");
+  (*PetscErrorPrintf)("or see https://www.mcs.anl.gov/petsc/documentation/faq.html#valgrind\n");
   (*PetscErrorPrintf)("or try http://valgrind.org on GNU/linux and Apple Mac OS X to find memory corruption errors\n");
 #if defined(PETSC_USE_DEBUG)
   if (!PetscStackActive()) (*PetscErrorPrintf)("  or try option -log_stack\n");
@@ -170,8 +169,6 @@ PetscErrorCode  PetscSignalHandlerDefault(int sig,void *ptr)
 
   Level: developer
 
-   Concepts: signal handler^setting
-
 .seealso: PetscPopSignalHandler(), PetscSignalHandlerDefault(), PetscPushErrorHandler()
 
 @*/
@@ -199,8 +196,16 @@ PetscErrorCode  PetscPushSignalHandler(PetscErrorCode (*routine)(int,void*),void
 #if !defined(PETSC_MISSING_SIGFPE)
     signal(SIGFPE,  PETSC_SIGNAL_CAST PetscSignalHandler_Private);
 #endif
-#if !defined(PETSC_MISSING_SIGHUP)
-    signal(SIGHUP, PETSC_SIGNAL_CAST PetscSignalHandler_Private);
+#if !defined(PETSC_MISSING_SIGHUP) && defined(PETSC_HAVE_STRUCT_SIGACTION)
+    {
+      struct  sigaction action;
+      sigaction(SIGHUP,NULL,&action);
+      if (action.sa_handler == SIG_IGN) {
+        ierr = PetscInfo(NULL,"SIGHUP previously set to ignore, therefor not changing its signal handler\n");CHKERRQ(ierr);
+      } else {
+        signal(SIGHUP, PETSC_SIGNAL_CAST PetscSignalHandler_Private);
+      }
+    }
 #endif
 #if !defined(PETSC_MISSING_SIGILL)
     signal(SIGILL,  PETSC_SIGNAL_CAST PetscSignalHandler_Private);
@@ -315,8 +320,6 @@ PetscErrorCode  PetscPushSignalHandler(PetscErrorCode (*routine)(int,void*),void
 
   Level: developer
 
-   Concepts: signal handler^setting
-
 .seealso: PetscPushSignalHandler()
 
 @*/
@@ -390,22 +393,3 @@ PetscErrorCode  PetscPopSignalHandler(void)
   }
   PetscFunctionReturn(0);
 }
-
-
-#if defined(PETSC_HAVE_SETJMP_H) && defined(PETSC_HAVE_SIGINFO_T)
-#include <setjmp.h>
-PETSC_VISIBILITY_INTERNAL jmp_buf PetscSegvJumpBuf;
-/*
-    This routine is called if a segmentation violation, i.e. inaccessible memory access
-    is triggered when PETSc is testing for a buggy pointer with PetscCheckPointer()
-
-    It simply unrolls the UNIX signal and returns to the location where setjump(PetscSeqvJumpBuf) is declared.
-*/
-PETSC_INTERN void PetscSegv_sigaction(int signal, siginfo_t *si, void *arg)
-{
-  longjmp(PetscSegvJumpBuf,1);
-  return;
-}
-#endif
-
-

@@ -395,8 +395,9 @@ int main(int argc,char **args)
       ierr = PetscFECreateDefault(PetscObjectComm((PetscObject) dm), dim, dim, PETSC_FALSE, NULL, PETSC_DECIDE, &fe);CHKERRQ(ierr); /* elasticity */
       ierr = PetscObjectSetName((PetscObject) fe, "deformation");CHKERRQ(ierr);
       /* FEM prob */
+      ierr = DMSetField(dm, 0, NULL, (PetscObject) fe);CHKERRQ(ierr);
+      ierr = DMCreateDS(dm);CHKERRQ(ierr);
       ierr = DMGetDS(dm, &prob);CHKERRQ(ierr);
-      ierr = PetscDSSetDiscretization(prob, 0, (PetscObject) fe);CHKERRQ(ierr);
       /* setup problem */
       if (run_type==1) {
         ierr = PetscDSSetJacobian(prob, 0, 0, NULL, NULL, NULL, g3_uu_3d);CHKERRQ(ierr);
@@ -415,7 +416,7 @@ int main(int argc,char **args)
         ierr = PetscDSAddBoundary(prob, DM_BC_NATURAL, "traction", "Faces", 0, Ncomp, components, NULL, Npid, pid, NULL);CHKERRQ(ierr);
       }
       while (cdm) {
-        ierr = DMSetDS(cdm,prob);CHKERRQ(ierr);
+        ierr = DMCopyDisc(dm, cdm);CHKERRQ(ierr);
         ierr = DMGetCoarseDM(cdm, &cdm);CHKERRQ(ierr);
       }
       ierr = PetscFEDestroy(&fe);CHKERRQ(ierr);
@@ -437,7 +438,7 @@ int main(int argc,char **args)
       PetscObject  deformation;
       ierr = DMCreateSubDM(dm, 1, &fields, NULL, &subdm);CHKERRQ(ierr);
       ierr = DMPlexCreateRigidBody(subdm, &nearNullSpace);CHKERRQ(ierr);
-      ierr = DMGetField(dm, 0, &deformation);CHKERRQ(ierr);
+      ierr = DMGetField(dm, 0, NULL, &deformation);CHKERRQ(ierr);
       ierr = PetscObjectCompose(deformation, "nearnullspace", (PetscObject) nearNullSpace);CHKERRQ(ierr);
       ierr = DMDestroy(&subdm);CHKERRQ(ierr);
       ierr = MatNullSpaceDestroy(&nearNullSpace);CHKERRQ(ierr); /* created by DM and destroyed by Mat */
@@ -479,7 +480,7 @@ int main(int argc,char **args)
     {
       PetscViewer       viewer = NULL;
       PetscViewerFormat fmt;
-      ierr = PetscOptionsGetViewer(comm,"ex56_","-vec_view",&viewer,&fmt,&flg);CHKERRQ(ierr);
+      ierr = PetscOptionsGetViewer(comm,NULL,"ex56_","-vec_view",&viewer,&fmt,&flg);CHKERRQ(ierr);
       if (flg) {
         ierr = PetscViewerPushFormat(viewer,fmt);CHKERRQ(ierr);
         ierr = VecView(xx,viewer);CHKERRQ(ierr);
@@ -524,9 +525,10 @@ int main(int argc,char **args)
     args: -cells 2,2,1 -max_conv_its 2 -petscspace_degree 2 -snes_max_it 2 -ksp_max_it 100 -ksp_type cg -ksp_rtol 1.e-11 -ksp_norm_type unpreconditioned -snes_rtol 1.e-10 -pc_type gamg -pc_gamg_type agg -pc_gamg_agg_nsmooths 1 -pc_gamg_coarse_eq_limit 1000 -pc_gamg_reuse_interpolation true -pc_gamg_square_graph 1 -pc_gamg_threshold 0.05 -pc_gamg_threshold_scale .0 -ksp_converged_reason -snes_monitor_short -ksp_monitor_short -snes_converged_reason -use_mat_nearnullspace true -mg_levels_ksp_max_it 1 -mg_levels_ksp_type chebyshev -mg_levels_esteig_ksp_type cg -mg_levels_esteig_ksp_max_it 10 -mg_levels_ksp_chebyshev_esteig 0,0.05,0,1.05 -mg_levels_pc_type jacobi -petscpartitioner_type simple -mat_block_size 3 -matptap_via scalable -ex56_dm_view -run_type 1
     timeoutfactor: 2
 
+  # HYPRE PtAP broken with complex numbers
   test:
     suffix: hypre
-    requires: hypre !single
+    requires: hypre !single !complex
     nsize: 4
     args: -cells 2,2,1 -max_conv_its 2 -lx 1. -alpha .01 -ex56_dm_refine 1 -petscspace_degree 2 -ksp_type cg -ksp_monitor_short -ksp_rtol 1.e-8 -pc_type hypre -pc_hypre_type boomeramg -pc_hypre_boomeramg_no_CF true -pc_hypre_boomeramg_agg_nl 1 -pc_hypre_boomeramg_coarsen_type HMIS -pc_hypre_boomeramg_interp_type ext+i -ksp_converged_reason -use_mat_nearnullspace true -mat_block_size 3 -petscpartitioner_type simple
 
@@ -534,7 +536,7 @@ int main(int argc,char **args)
     suffix: ml
     requires: ml !single
     nsize: 4
-    args: -cells 2,2,1 -max_conv_its 2 -lx 1. -alpha .01 -ex56_dm_refine 1 -petscspace_degree 2 -ksp_type cg -ksp_monitor_short -ksp_converged_reason -ksp_rtol 1.e-8 -pc_type ml -mg_levels_ksp_type chebyshev -mg_levels_esteig_ksp_max_it 10 -mg_levels_ksp_chebyshev_esteig 0,0.05,0,1.05 -mg_levels_pc_type sor -mg_levels_esteig_ksp_type cg -mat_block_size 3 -petscpartitioner_type simple -use_mat_nearnullspace
+    args: -cells 2,2,1 -max_conv_its 2 -lx 1. -alpha .01 -ex56_dm_refine 1 -petscspace_degree 2 -ksp_type cg -ksp_monitor_short -ksp_converged_reason -ksp_rtol 1.e-8 -pc_type ml -mg_levels_ksp_type chebyshev -mg_levels_ksp_max_it 3 -mg_levels_esteig_ksp_max_it 10 -mg_levels_ksp_chebyshev_esteig 0,0.05,0,1.05 -mg_levels_pc_type sor -mg_levels_esteig_ksp_type cg -mat_block_size 3 -petscpartitioner_type simple -use_mat_nearnullspace
 
   test:
     nsize: 4

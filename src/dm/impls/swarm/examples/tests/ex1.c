@@ -1,4 +1,4 @@
-static char help[] = "Tests projection with DMSwarm.\n";
+static char help[] = "Tests projection with DMSwarm using general particle shapes.\n";
 
 #include <petsc/private/dmswarmimpl.h>
 #include <petsc/private/petscfeimpl.h>
@@ -179,7 +179,7 @@ int main (int argc, char * argv[]) {
   AppCtx         user;
   PetscErrorCode ierr;
 
-  ierr = PetscInitialize(&argc, &argv, NULL, help);CHKERRQ(ierr);
+  ierr = PetscInitialize(&argc, &argv, NULL, help);if (ierr) return ierr;
   comm = PETSC_COMM_WORLD;
   ierr = ProcessOptions(comm, &user);CHKERRQ(ierr);
   ierr = CreateMesh(comm, &dm, &user);CHKERRQ(ierr);

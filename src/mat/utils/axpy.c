@@ -1,6 +1,39 @@
 
 #include <petsc/private/matimpl.h>  /*I   "petscmat.h"  I*/
 
+static PetscErrorCode MatTransposeAXPY_Private(Mat Y,PetscScalar a,Mat X,MatStructure str,Mat T)
+{
+  PetscErrorCode ierr,(*f)(Mat,Mat*);
+  Mat            A,F;
+
+  PetscFunctionBegin;
+  ierr = PetscObjectQueryFunction((PetscObject)T,"MatTransposeGetMat_C",&f);CHKERRQ(ierr);
+  if (f) {
+    ierr = MatTransposeGetMat(T,&A);CHKERRQ(ierr);
+    if (T == X) {
+      ierr = PetscInfo(NULL,"Explicitly transposing X of type MATTRANSPOSEMAT to perform MatAXPY()\n");CHKERRQ(ierr);
+      ierr = MatTranspose(A,MAT_INITIAL_MATRIX,&F);CHKERRQ(ierr);
+      A = Y;
+    } else {
+      ierr = PetscInfo(NULL,"Transposing X because Y of type MATTRANSPOSEMAT to perform MatAXPY()\n");CHKERRQ(ierr);
+      ierr = MatTranspose(X,MAT_INITIAL_MATRIX,&F);CHKERRQ(ierr);
+    }
+  } else {
+    ierr = MatHermitianTransposeGetMat(T,&A);CHKERRQ(ierr);
+    if (T == X) {
+      ierr = PetscInfo(NULL,"Explicitly Hermitian transposing X of type MATTRANSPOSEMAT to perform MatAXPY()\n");CHKERRQ(ierr);
+      ierr = MatHermitianTranspose(A,MAT_INITIAL_MATRIX,&F);CHKERRQ(ierr);
+      A = Y;
+    } else {
+      ierr = PetscInfo(NULL,"Hermitian transposing X because Y of type MATTRANSPOSEMAT to perform MatAXPY()\n");CHKERRQ(ierr);
+      ierr = MatHermitianTranspose(X,MAT_INITIAL_MATRIX,&F);CHKERRQ(ierr);
+    }
+  }
+  ierr = MatAXPY(A,a,F,str);CHKERRQ(ierr);
+  ierr = MatDestroy(&F);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
 /*@
    MatAXPY - Computes Y = a*X + Y.
 
@@ -15,30 +48,54 @@
 
    Level: intermediate
 
-.keywords: matrix, add
-
 .seealso: MatAYPX()
  @*/
 PetscErrorCode MatAXPY(Mat Y,PetscScalar a,Mat X,MatStructure str)
 {
   PetscErrorCode ierr;
+  PetscInt       M1,M2,N1,N2;
   PetscInt       m1,m2,n1,n2;
-  PetscBool      sametype;
+  MatType        t1,t2;
+  PetscBool      sametype,transpose;
 
   PetscFunctionBegin;
-  PetscValidHeaderSpecific(X,MAT_CLASSID,3);
   PetscValidHeaderSpecific(Y,MAT_CLASSID,1);
   PetscValidLogicalCollectiveScalar(Y,a,2);
-  ierr = MatGetSize(X,&m1,&n1);CHKERRQ(ierr);
-  ierr = MatGetSize(Y,&m2,&n2);CHKERRQ(ierr);
-  if (m1 != m2 || n1 != n2) SETERRQ4(PETSC_COMM_SELF,PETSC_ERR_ARG_SIZ,"Non conforming matrix add: %D %D %D %D",m1,m2,n1,n2);
+  PetscValidHeaderSpecific(X,MAT_CLASSID,3);
+  PetscCheckSameComm(Y,1,X,3);
+  ierr = MatGetSize(X,&M1,&N1);CHKERRQ(ierr);
+  ierr = MatGetSize(Y,&M2,&N2);CHKERRQ(ierr);
+  ierr = MatGetLocalSize(X,&m1,&n1);CHKERRQ(ierr);
+  ierr = MatGetLocalSize(Y,&m2,&n2);CHKERRQ(ierr);
+  if (M1 != M2 || N1 != N2) SETERRQ4(PetscObjectComm((PetscObject)Y),PETSC_ERR_ARG_SIZ,"Non conforming matrix add: global sizes %D x %D, %D x %D",M1,M2,N1,N2);
+  if (m1 != m2 || n1 != n2) SETERRQ4(PETSC_COMM_SELF,PETSC_ERR_ARG_SIZ,"Non conforming matrix add: local sizes %D x %D, %D x %D",m1,m2,n1,n2);
 
-  ierr = PetscStrcmp(((PetscObject)X)->type_name,((PetscObject)Y)->type_name,&sametype);CHKERRQ(ierr);
+  ierr = MatGetType(X,&t1);CHKERRQ(ierr);
+  ierr = MatGetType(Y,&t2);CHKERRQ(ierr);
+  ierr = PetscStrcmp(t1,t2,&sametype);CHKERRQ(ierr);
   ierr = PetscLogEventBegin(MAT_AXPY,Y,0,0,0);CHKERRQ(ierr);
   if (Y->ops->axpy && sametype) {
     ierr = (*Y->ops->axpy)(Y,a,X,str);CHKERRQ(ierr);
   } else {
-    ierr = MatAXPY_Basic(Y,a,X,str);CHKERRQ(ierr);
+    ierr = PetscStrcmp(t1,MATTRANSPOSEMAT,&transpose);CHKERRQ(ierr);
+    if (transpose) {
+        ierr = MatTransposeAXPY_Private(Y,a,X,str,X);CHKERRQ(ierr);
+    } else {
+      ierr = PetscStrcmp(t2,MATTRANSPOSEMAT,&transpose);CHKERRQ(ierr);
+      if (transpose) {
+        ierr = MatTransposeAXPY_Private(Y,a,X,str,Y);CHKERRQ(ierr);
+      } else {
+        if (str != DIFFERENT_NONZERO_PATTERN) {
+          ierr = MatAXPY_Basic(Y,a,X,str);CHKERRQ(ierr);
+        } else {
+          Mat B;
+
+          ierr = MatAXPY_Basic_Preallocate(Y,X,&B);CHKERRQ(ierr);
+          ierr = MatAXPY_BasicWithPreallocation(B,Y,a,X,str);CHKERRQ(ierr);
+          ierr = MatHeaderReplace(Y,&B);CHKERRQ(ierr);
+        }
+      }
+    }
   }
   ierr = PetscLogEventEnd(MAT_AXPY,Y,0,0,0);CHKERRQ(ierr);
 #if defined(PETSC_HAVE_VIENNACL) || defined(PETSC_HAVE_CUDA)
@@ -46,6 +103,56 @@ PetscErrorCode MatAXPY(Mat Y,PetscScalar a,Mat X,MatStructure str)
     Y->valid_GPU_matrix = PETSC_OFFLOAD_CPU;
   }
 #endif
+  PetscFunctionReturn(0);
+}
+
+PetscErrorCode MatAXPY_Basic_Preallocate(Mat Y, Mat X, Mat *B)
+{
+  PetscErrorCode ierr;
+  PetscErrorCode (*preall)(Mat,Mat,Mat*) = NULL;
+
+  PetscFunctionBegin;
+  /* look for any available faster alternative to the general preallocator */
+  ierr = PetscObjectQueryFunction((PetscObject)Y,"MatAXPYGetPreallocation_C",&preall);CHKERRQ(ierr);
+  if (preall) {
+    ierr = (*preall)(Y,X,B);CHKERRQ(ierr);
+  } else { /* Use MatPrellocator, assumes same row-col distribution */
+    Mat      preallocator;
+    PetscInt r,rstart,rend;
+    PetscInt m,n,M,N;
+
+    ierr = MatGetRowUpperTriangular(Y);CHKERRQ(ierr);
+    ierr = MatGetRowUpperTriangular(X);CHKERRQ(ierr);
+    ierr = MatGetSize(Y,&M,&N);CHKERRQ(ierr);
+    ierr = MatGetLocalSize(Y,&m,&n);CHKERRQ(ierr);
+    ierr = MatCreate(PetscObjectComm((PetscObject)Y),&preallocator);CHKERRQ(ierr);
+    ierr = MatSetType(preallocator,MATPREALLOCATOR);CHKERRQ(ierr);
+    ierr = MatSetSizes(preallocator,m,n,M,N);CHKERRQ(ierr);
+    ierr = MatSetUp(preallocator);CHKERRQ(ierr);
+    ierr = MatGetOwnershipRange(preallocator,&rstart,&rend);CHKERRQ(ierr);
+    for (r = rstart; r < rend; ++r) {
+      PetscInt          ncols;
+      const PetscInt    *row;
+      const PetscScalar *vals;
+
+      ierr = MatGetRow(Y,r,&ncols,&row,&vals);CHKERRQ(ierr);
+      ierr = MatSetValues(preallocator,1,&r,ncols,row,vals,INSERT_VALUES);CHKERRQ(ierr);
+      ierr = MatRestoreRow(Y,r,&ncols,&row,&vals);CHKERRQ(ierr);
+      ierr = MatGetRow(X,r,&ncols,&row,&vals);CHKERRQ(ierr);
+      ierr = MatSetValues(preallocator,1,&r,ncols,row,vals,INSERT_VALUES);CHKERRQ(ierr);
+      ierr = MatRestoreRow(X,r,&ncols,&row,&vals);CHKERRQ(ierr);
+    }
+    ierr = MatAssemblyBegin(preallocator,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+    ierr = MatAssemblyEnd(preallocator,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+    ierr = MatRestoreRowUpperTriangular(Y);CHKERRQ(ierr);
+    ierr = MatRestoreRowUpperTriangular(X);CHKERRQ(ierr);
+
+    ierr = MatCreate(PetscObjectComm((PetscObject)Y),B);CHKERRQ(ierr);
+    ierr = MatSetType(*B,((PetscObject)Y)->type_name);CHKERRQ(ierr);
+    ierr = MatSetSizes(*B,m,n,M,N);CHKERRQ(ierr);
+    ierr = MatPreallocatorPreallocate(preallocator,PETSC_FALSE,*B);CHKERRQ(ierr);
+    ierr = MatDestroy(&preallocator);CHKERRQ(ierr);
+  }
   PetscFunctionReturn(0);
 }
 
@@ -60,6 +167,7 @@ PetscErrorCode MatAXPY_Basic(Mat Y,PetscScalar a,Mat X,MatStructure str)
   PetscFunctionBegin;
   ierr = MatGetSize(X,&m,&n);CHKERRQ(ierr);
   ierr = MatGetOwnershipRange(X,&start,&end);CHKERRQ(ierr);
+  ierr = MatGetRowUpperTriangular(X);CHKERRQ(ierr);
   if (a == 1.0) {
     for (i = start; i < end; i++) {
       ierr = MatGetRow(X,i,&ncols,&row,&vals);CHKERRQ(ierr);
@@ -67,17 +175,22 @@ PetscErrorCode MatAXPY_Basic(Mat Y,PetscScalar a,Mat X,MatStructure str)
       ierr = MatRestoreRow(X,i,&ncols,&row,&vals);CHKERRQ(ierr);
     }
   } else {
-    ierr = PetscMalloc1(n+1,&val);CHKERRQ(ierr);
+    PetscInt vs = 100;
+    /* realloc if needed, as this function may be used in parallel */
+    ierr = PetscMalloc1(vs,&val);CHKERRQ(ierr);
     for (i=start; i<end; i++) {
       ierr = MatGetRow(X,i,&ncols,&row,&vals);CHKERRQ(ierr);
-      for (j=0; j<ncols; j++) {
-        val[j] = a*vals[j];
+      if (vs < ncols) {
+        vs   = PetscMin(2*ncols,n);
+        ierr = PetscRealloc(vs*sizeof(*val),&val);CHKERRQ(ierr);
       }
+      for (j=0; j<ncols; j++) val[j] = a*vals[j];
       ierr = MatSetValues(Y,1,&i,ncols,row,val,ADD_VALUES);CHKERRQ(ierr);
       ierr = MatRestoreRow(X,i,&ncols,&row,&vals);CHKERRQ(ierr);
     }
     ierr = PetscFree(val);CHKERRQ(ierr);
   }
+  ierr = MatRestoreRowUpperTriangular(X);CHKERRQ(ierr);
   ierr = MatAssemblyBegin(Y,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(Y,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   PetscFunctionReturn(0);
@@ -94,6 +207,8 @@ PetscErrorCode MatAXPY_BasicWithPreallocation(Mat B,Mat Y,PetscScalar a,Mat X,Ma
   PetscFunctionBegin;
   ierr = MatGetSize(X,&m,&n);CHKERRQ(ierr);
   ierr = MatGetOwnershipRange(X,&start,&end);CHKERRQ(ierr);
+  ierr = MatGetRowUpperTriangular(Y);CHKERRQ(ierr);
+  ierr = MatGetRowUpperTriangular(X);CHKERRQ(ierr);
   if (a == 1.0) {
     for (i = start; i < end; i++) {
       ierr = MatGetRow(Y,i,&ncols,&row,&vals);CHKERRQ(ierr);
@@ -105,21 +220,27 @@ PetscErrorCode MatAXPY_BasicWithPreallocation(Mat B,Mat Y,PetscScalar a,Mat X,Ma
       ierr = MatRestoreRow(X,i,&ncols,&row,&vals);CHKERRQ(ierr);
     }
   } else {
-    ierr = PetscMalloc1(n+1,&val);CHKERRQ(ierr);
+    PetscInt vs = 100;
+    /* realloc if needed, as this function may be used in parallel */
+    ierr = PetscMalloc1(vs,&val);CHKERRQ(ierr);
     for (i=start; i<end; i++) {
       ierr = MatGetRow(Y,i,&ncols,&row,&vals);CHKERRQ(ierr);
       ierr = MatSetValues(B,1,&i,ncols,row,vals,ADD_VALUES);CHKERRQ(ierr);
       ierr = MatRestoreRow(Y,i,&ncols,&row,&vals);CHKERRQ(ierr);
 
       ierr = MatGetRow(X,i,&ncols,&row,&vals);CHKERRQ(ierr);
-      for (j=0; j<ncols; j++) {
-        val[j] = a*vals[j];
+      if (vs < ncols) {
+        vs   = PetscMin(2*ncols,n);
+        ierr = PetscRealloc(vs*sizeof(*val),&val);CHKERRQ(ierr);
       }
+      for (j=0; j<ncols; j++) val[j] = a*vals[j];
       ierr = MatSetValues(B,1,&i,ncols,row,val,ADD_VALUES);CHKERRQ(ierr);
       ierr = MatRestoreRow(X,i,&ncols,&row,&vals);CHKERRQ(ierr);
     }
     ierr = PetscFree(val);CHKERRQ(ierr);
   }
+  ierr = MatRestoreRowUpperTriangular(Y);CHKERRQ(ierr);
+  ierr = MatRestoreRowUpperTriangular(X);CHKERRQ(ierr);
   ierr = MatAssemblyBegin(B,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(B,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   PetscFunctionReturn(0);
@@ -146,8 +267,6 @@ PetscErrorCode MatAXPY_BasicWithPreallocation(Mat B,Mat Y,PetscScalar a,Mat X,Ma
    Developers Note: If the local "diagonal part" of the matrix Y has no entries then the local diagonal part is
     preallocated with 1 nonzero per row for the to be added values. This allows for fast shifting of an empty matrix.
 
-.keywords: matrix, add, shift
-
 .seealso: MatDiagonalSet(), MatScale(), MatDiagonalScale()
  @*/
 PetscErrorCode  MatShift(Mat Y,PetscScalar a)
@@ -159,6 +278,7 @@ PetscErrorCode  MatShift(Mat Y,PetscScalar a)
   if (!Y->assembled) SETERRQ(PetscObjectComm((PetscObject)Y),PETSC_ERR_ARG_WRONGSTATE,"Not for unassembled matrix");
   if (Y->factortype) SETERRQ(PetscObjectComm((PetscObject)Y),PETSC_ERR_ARG_WRONGSTATE,"Not for factored matrix");
   MatCheckPreallocated(Y,1);
+  if (a == 0.0) PetscFunctionReturn(0);
 
   if (Y->ops->shift) {
     ierr = (*Y->ops->shift)(Y,a);CHKERRQ(ierr);
@@ -166,6 +286,7 @@ PetscErrorCode  MatShift(Mat Y,PetscScalar a)
     ierr = MatShift_Basic(Y,a);CHKERRQ(ierr);
   }
 
+  ierr = PetscObjectStateIncrease((PetscObject)Y);CHKERRQ(ierr);
 #if defined(PETSC_HAVE_VIENNACL) || defined(PETSC_HAVE_CUDA)
   if (Y->valid_GPU_matrix != PETSC_OFFLOAD_UNALLOCATED) {
     Y->valid_GPU_matrix = PETSC_OFFLOAD_CPU;
@@ -202,7 +323,7 @@ PetscErrorCode  MatDiagonalSet_Default(Mat Y,Vec D,InsertMode is)
 .  D - the diagonal matrix, represented as a vector
 -  i - INSERT_VALUES or ADD_VALUES
 
-   Neighbor-wise Collective on Mat and Vec
+   Neighbor-wise Collective on Mat
 
    Notes:
     If the matrix Y is missing some diagonal entries this routine can be very slow. To make it fast one should initially
@@ -210,8 +331,6 @@ PetscErrorCode  MatDiagonalSet_Default(Mat Y,Vec D,InsertMode is)
    entry).
 
    Level: intermediate
-
-.keywords: matrix, add, shift, diagonal
 
 .seealso: MatShift(), MatScale(), MatDiagonalScale()
 @*/
@@ -231,6 +350,7 @@ PetscErrorCode  MatDiagonalSet(Mat Y,Vec D,InsertMode is)
   } else {
     ierr = MatDiagonalSet_Default(Y,D,is);CHKERRQ(ierr);
   }
+  ierr = PetscObjectStateIncrease((PetscObject)Y);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
@@ -247,8 +367,6 @@ PetscErrorCode  MatDiagonalSet(Mat Y,Vec D,InsertMode is)
 
    Level: intermediate
 
-.keywords: matrix, add
-
 .seealso: MatAXPY()
  @*/
 PetscErrorCode  MatAYPX(Mat Y,PetscScalar a,Mat X,MatStructure str)
@@ -264,93 +382,44 @@ PetscErrorCode  MatAYPX(Mat Y,PetscScalar a,Mat X,MatStructure str)
   ierr = MatGetSize(X,&mX,&nX);CHKERRQ(ierr);
   ierr = MatGetSize(X,&mY,&nY);CHKERRQ(ierr);
   if (mX != mY || nX != nY) SETERRQ4(PETSC_COMM_SELF,PETSC_ERR_ARG_SIZ,"Non conforming matrices: %D %D first %D %D second",mX,mY,nX,nY);
-
   ierr = MatScale(Y,a);CHKERRQ(ierr);
   ierr = MatAXPY(Y,one,X,str);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
 /*@
-    MatComputeExplicitOperator - Computes the explicit matrix
+    MatComputeOperator - Computes the explicit matrix
 
     Collective on Mat
 
     Input Parameter:
-.   inmat - the matrix
++   inmat - the matrix
+-   mattype - the matrix type for the explicit operator
 
     Output Parameter:
 .   mat - the explict  operator
 
     Notes:
-    This computation is done by applying the operators to columns of the
-    identity matrix.
-
-    Currently, this routine uses a dense matrix format when 1 processor
-    is used and a sparse format otherwise.  This routine is costly in general,
-    and is recommended for use only with relatively small systems.
+    This computation is done by applying the operators to columns of the identity matrix.
+    This routine is costly in general, and is recommended for use only with relatively small systems.
+    Currently, this routine uses a dense matrix format if mattype == NULL.
 
     Level: advanced
 
-.keywords: Mat, compute, explicit, operator
 @*/
-PetscErrorCode  MatComputeExplicitOperator(Mat inmat,Mat *mat)
+PetscErrorCode  MatComputeOperator(Mat inmat,MatType mattype,Mat *mat)
 {
-  Vec            in,out;
   PetscErrorCode ierr;
-  PetscInt       i,m,n,M,N,*rows,start,end;
-  MPI_Comm       comm;
-  PetscScalar    *array,zero = 0.0,one = 1.0;
-  PetscMPIInt    size;
 
   PetscFunctionBegin;
   PetscValidHeaderSpecific(inmat,MAT_CLASSID,1);
-  PetscValidPointer(mat,2);
-
-  ierr = PetscObjectGetComm((PetscObject)inmat,&comm);CHKERRQ(ierr);
-  ierr = MPI_Comm_size(comm,&size);CHKERRQ(ierr);
-
-  ierr = MatGetLocalSize(inmat,&m,&n);CHKERRQ(ierr);
-  ierr = MatGetSize(inmat,&M,&N);CHKERRQ(ierr);
-  ierr = MatCreateVecs(inmat,&in,&out);CHKERRQ(ierr);
-  ierr = VecSetOption(in,VEC_IGNORE_OFF_PROC_ENTRIES,PETSC_TRUE);CHKERRQ(ierr);
-  ierr = VecGetOwnershipRange(out,&start,&end);CHKERRQ(ierr);
-  ierr = PetscMalloc1(m,&rows);CHKERRQ(ierr);
-  for (i=0; i<m; i++) rows[i] = start + i;
-
-  ierr = MatCreate(comm,mat);CHKERRQ(ierr);
-  ierr = MatSetSizes(*mat,m,n,M,N);CHKERRQ(ierr);
-  if (size == 1) {
-    ierr = MatSetType(*mat,MATSEQDENSE);CHKERRQ(ierr);
-    ierr = MatSeqDenseSetPreallocation(*mat,NULL);CHKERRQ(ierr);
-  } else {
-    ierr = MatSetType(*mat,MATMPIAIJ);CHKERRQ(ierr);
-    ierr = MatMPIAIJSetPreallocation(*mat,n,NULL,N-n,NULL);CHKERRQ(ierr);
-  }
-
-  for (i=0; i<N; i++) {
-
-    ierr = VecSet(in,zero);CHKERRQ(ierr);
-    ierr = VecSetValues(in,1,&i,&one,INSERT_VALUES);CHKERRQ(ierr);
-    ierr = VecAssemblyBegin(in);CHKERRQ(ierr);
-    ierr = VecAssemblyEnd(in);CHKERRQ(ierr);
-
-    ierr = MatMult(inmat,in,out);CHKERRQ(ierr);
-
-    ierr = VecGetArray(out,&array);CHKERRQ(ierr);
-    ierr = MatSetValues(*mat,m,rows,1,&i,array,INSERT_VALUES);CHKERRQ(ierr);
-    ierr = VecRestoreArray(out,&array);CHKERRQ(ierr);
-
-  }
-  ierr = PetscFree(rows);CHKERRQ(ierr);
-  ierr = VecDestroy(&out);CHKERRQ(ierr);
-  ierr = VecDestroy(&in);CHKERRQ(ierr);
-  ierr = MatAssemblyBegin(*mat,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  ierr = MatAssemblyEnd(*mat,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  PetscValidPointer(mat,3);
+  ierr = MatConvert_Shell(inmat,mattype ? mattype : MATDENSE,MAT_INITIAL_MATRIX,mat);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
 /*@
-    MatComputeExplicitOperatorTranspose - Computes the explicit matrix representation of
+    MatComputeOperatorTranspose - Computes the explicit matrix representation of
         a give matrix that can apply MatMultTranspose()
 
     Collective on Mat
@@ -362,70 +431,24 @@ PetscErrorCode  MatComputeExplicitOperator(Mat inmat,Mat *mat)
 .   mat - the explict  operator transposed
 
     Notes:
-    This computation is done by applying the transpose of the operator to columns of the
-    identity matrix.
-
-    Currently, this routine uses a dense matrix format when 1 processor
-    is used and a sparse format otherwise.  This routine is costly in general,
-    and is recommended for use only with relatively small systems.
+    This computation is done by applying the transpose of the operator to columns of the identity matrix.
+    This routine is costly in general, and is recommended for use only with relatively small systems.
+    Currently, this routine uses a dense matrix format if mattype == NULL.
 
     Level: advanced
 
-.keywords: Mat, compute, explicit, operator
 @*/
-PetscErrorCode  MatComputeExplicitOperatorTranspose(Mat inmat,Mat *mat)
+PetscErrorCode  MatComputeOperatorTranspose(Mat inmat,MatType mattype,Mat *mat)
 {
-  Vec            in,out;
+  Mat            A;
   PetscErrorCode ierr;
-  PetscInt       i,m,n,M,N,*rows,start,end;
-  MPI_Comm       comm;
-  PetscScalar    *array,zero = 0.0,one = 1.0;
-  PetscMPIInt    size;
 
   PetscFunctionBegin;
   PetscValidHeaderSpecific(inmat,MAT_CLASSID,1);
-  PetscValidPointer(mat,2);
-
-  ierr = PetscObjectGetComm((PetscObject)inmat,&comm);CHKERRQ(ierr);
-  ierr = MPI_Comm_size(comm,&size);CHKERRQ(ierr);
-
-  ierr = MatGetLocalSize(inmat,&m,&n);CHKERRQ(ierr);
-  ierr = MatGetSize(inmat,&M,&N);CHKERRQ(ierr);
-  ierr = MatCreateVecs(inmat,&in,&out);CHKERRQ(ierr);
-  ierr = VecSetOption(in,VEC_IGNORE_OFF_PROC_ENTRIES,PETSC_TRUE);CHKERRQ(ierr);
-  ierr = VecGetOwnershipRange(out,&start,&end);CHKERRQ(ierr);
-  ierr = PetscMalloc1(m,&rows);CHKERRQ(ierr);
-  for (i=0; i<m; i++) rows[i] = start + i;
-
-  ierr = MatCreate(comm,mat);CHKERRQ(ierr);
-  ierr = MatSetSizes(*mat,m,n,M,N);CHKERRQ(ierr);
-  if (size == 1) {
-    ierr = MatSetType(*mat,MATSEQDENSE);CHKERRQ(ierr);
-    ierr = MatSeqDenseSetPreallocation(*mat,NULL);CHKERRQ(ierr);
-  } else {
-    ierr = MatSetType(*mat,MATMPIAIJ);CHKERRQ(ierr);
-    ierr = MatMPIAIJSetPreallocation(*mat,n,NULL,N-n,NULL);CHKERRQ(ierr);
-  }
-
-  for (i=0; i<N; i++) {
-
-    ierr = VecSet(in,zero);CHKERRQ(ierr);
-    ierr = VecSetValues(in,1,&i,&one,INSERT_VALUES);CHKERRQ(ierr);
-    ierr = VecAssemblyBegin(in);CHKERRQ(ierr);
-    ierr = VecAssemblyEnd(in);CHKERRQ(ierr);
-
-    ierr = MatMultTranspose(inmat,in,out);CHKERRQ(ierr);
-
-    ierr = VecGetArray(out,&array);CHKERRQ(ierr);
-    ierr = MatSetValues(*mat,m,rows,1,&i,array,INSERT_VALUES);CHKERRQ(ierr);
-    ierr = VecRestoreArray(out,&array);CHKERRQ(ierr);
-
-  }
-  ierr = PetscFree(rows);CHKERRQ(ierr);
-  ierr = VecDestroy(&out);CHKERRQ(ierr);
-  ierr = VecDestroy(&in);CHKERRQ(ierr);
-  ierr = MatAssemblyBegin(*mat,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  ierr = MatAssemblyEnd(*mat,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  PetscValidPointer(mat,3);
+  ierr = MatCreateTranspose(inmat,&A);CHKERRQ(ierr);
+  ierr = MatConvert_Shell(A,mattype ? mattype : MATDENSE,MAT_INITIAL_MATRIX,mat);CHKERRQ(ierr);
+  ierr = MatDestroy(&A);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 

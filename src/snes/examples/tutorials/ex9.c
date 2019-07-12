@@ -79,7 +79,7 @@ int main(int argc,char **argv) {
   DMDALocalInfo       info;
   PetscReal           error1,errorinf;
 
-  ierr = PetscInitialize(&argc,&argv,(char*)0,help); CHKERRQ(ierr);
+  ierr = PetscInitialize(&argc,&argv,(char*)0,help);if (ierr) return ierr;
 
   ierr = DMDACreate2d(PETSC_COMM_WORLD,DM_BOUNDARY_NONE,DM_BOUNDARY_NONE,
                       DMDA_STENCIL_STAR,5,5, /* 5x5 coarse grid; override with -da_grid_x,_y */
@@ -267,6 +267,12 @@ PetscErrorCode FormJacobianLocal(DMDALocalInfo *info, PetscScalar **au, Mat A, M
       requires: !single
       nsize: 2
       args: -snes_grid_sequence 2 -snes_vi_monitor -snes_type vinewtonrsls
+
+   test:
+      suffix: mg
+      requires: !single
+      nsize: 4
+      args: -snes_grid_sequence 3 -snes_converged_reason -pc_type mg
 
    test:
       suffix: 4

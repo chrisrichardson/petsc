@@ -138,14 +138,14 @@ static PetscErrorCode PCSetUp_Redundant(PC pc)
         }
         ierr = ISCreateGeneral(comm,red->psubcomm->n*mlocal,idx1,PETSC_COPY_VALUES,&is1);CHKERRQ(ierr);
         ierr = ISCreateGeneral(comm,red->psubcomm->n*mlocal,idx2,PETSC_COPY_VALUES,&is2);CHKERRQ(ierr);
-        ierr = VecScatterCreateWithData(x,is1,red->xdup,is2,&red->scatterin);CHKERRQ(ierr);
+        ierr = VecScatterCreate(x,is1,red->xdup,is2,&red->scatterin);CHKERRQ(ierr);
         ierr = ISDestroy(&is1);CHKERRQ(ierr);
         ierr = ISDestroy(&is2);CHKERRQ(ierr);
 
         /* Impl below is good for PETSC_SUBCOMM_INTERLACED (no inter-process communication) and PETSC_SUBCOMM_CONTIGUOUS (communication within subcomm) */
         ierr = ISCreateStride(comm,mlocal,mstart+ red->psubcomm->color*M,1,&is1);CHKERRQ(ierr);
         ierr = ISCreateStride(comm,mlocal,mstart,1,&is2);CHKERRQ(ierr);
-        ierr = VecScatterCreateWithData(red->xdup,is1,x,is2,&red->scatterout);CHKERRQ(ierr);
+        ierr = VecScatterCreate(red->xdup,is1,x,is2,&red->scatterout);CHKERRQ(ierr);
         ierr = ISDestroy(&is1);CHKERRQ(ierr);
         ierr = ISDestroy(&is2);CHKERRQ(ierr);
         ierr = PetscFree2(idx1,idx2);CHKERRQ(ierr);
@@ -189,6 +189,7 @@ static PetscErrorCode PCApply_Redundant(PC pc,Vec x,Vec y)
   PetscFunctionBegin;
   if (!red->useparallelmat) {
     ierr = KSPSolve(red->ksp,x,y);CHKERRQ(ierr);
+    ierr = KSPCheckSolve(red->ksp,pc,y);CHKERRQ(ierr);
     PetscFunctionReturn(0);
   }
 
@@ -202,6 +203,7 @@ static PetscErrorCode PCApply_Redundant(PC pc,Vec x,Vec y)
 
   /* apply preconditioner on each processor */
   ierr = KSPSolve(red->ksp,red->xsub,red->ysub);CHKERRQ(ierr);
+  ierr = KSPCheckSolve(red->ksp,pc,red->ysub);CHKERRQ(ierr);
   ierr = VecResetArray(red->xsub);CHKERRQ(ierr);
   ierr = VecRestoreArray(red->xdup,&array);CHKERRQ(ierr);
 
@@ -226,6 +228,7 @@ static PetscErrorCode PCApplyTranspose_Redundant(PC pc,Vec x,Vec y)
   PetscFunctionBegin;
   if (!red->useparallelmat) {
     ierr = KSPSolveTranspose(red->ksp,x,y);CHKERRQ(ierr);
+    ierr = KSPCheckSolve(red->ksp,pc,y);CHKERRQ(ierr);
     PetscFunctionReturn(0);
   }
 
@@ -239,6 +242,7 @@ static PetscErrorCode PCApplyTranspose_Redundant(PC pc,Vec x,Vec y)
 
   /* apply preconditioner on each processor */
   ierr = KSPSolveTranspose(red->ksp,red->xsub,red->ysub);CHKERRQ(ierr);
+  ierr = KSPCheckSolve(red->ksp,pc,red->ysub);CHKERRQ(ierr);
   ierr = VecResetArray(red->xsub);CHKERRQ(ierr);
   ierr = VecRestoreArray(red->xdup,&array);CHKERRQ(ierr);
 
@@ -319,7 +323,6 @@ static PetscErrorCode PCRedundantSetNumber_Redundant(PC pc,PetscInt nreds)
 
    Level: advanced
 
-.keywords: PC, redundant solve
 @*/
 PetscErrorCode PCRedundantSetNumber(PC pc,PetscInt nredundant)
 {
@@ -363,7 +366,6 @@ static PetscErrorCode PCRedundantSetScatter_Redundant(PC pc,VecScatter in,VecSca
 
    Level: advanced
 
-.keywords: PC, redundant solve
 @*/
 PetscErrorCode PCRedundantSetScatter(PC pc,VecScatter in,VecScatter out)
 {
@@ -431,7 +433,6 @@ static PetscErrorCode PCRedundantGetKSP_Redundant(PC pc,KSP *innerksp)
 
    Level: advanced
 
-.keywords: PC, redundant solve
 @*/
 PetscErrorCode PCRedundantGetKSP(PC pc,KSP *innerksp)
 {
@@ -468,7 +469,6 @@ static PetscErrorCode PCRedundantGetOperators_Redundant(PC pc,Mat *mat,Mat *pmat
 
    Level: advanced
 
-.keywords: PC, redundant solve
 @*/
 PetscErrorCode PCRedundantGetOperators(PC pc,Mat *mat,Mat *pmat)
 {

@@ -158,7 +158,7 @@ PETSC_INTERN PetscErrorCode PetscInitialize_DynamicLibraries(void);
 #if defined(PETSC_USE_LOG)
 PETSC_INTERN PetscErrorCode PetscLogInitialize(void);
 #endif
-PETSC_EXTERN PetscErrorCode PetscMallocAlign(size_t,int,const char[],const char[],void**);
+PETSC_EXTERN PetscErrorCode PetscMallocAlign(size_t,PetscBool,int,const char[],const char[],void**);
 PETSC_EXTERN PetscErrorCode PetscFreeAlign(void*,int,const char[],const char[]);
 PETSC_INTERN int  PetscGlobalArgc;
 PETSC_INTERN char **PetscGlobalArgs;
@@ -192,7 +192,7 @@ PetscErrorCode PETScParseFortranArgs_Private(int *argc,char ***argv)
   ierr = MPI_Bcast(argc,1,MPI_INT,0,PETSC_COMM_WORLD);CHKERRQ(ierr);
 
   /* PetscTrMalloc() not yet set, so don't use PetscMalloc() */
-  ierr = PetscMallocAlign((*argc+1)*(warg*sizeof(char)+sizeof(char*)),0,0,0,(void**)argv);CHKERRQ(ierr);
+  ierr = PetscMallocAlign((*argc+1)*(warg*sizeof(char)+sizeof(char*)),PETSC_FALSE,0,0,0,(void**)argv);CHKERRQ(ierr);
   (*argv)[0] = (char*)(*argv + *argc + 1);
 
   if (!rank) {
@@ -344,6 +344,13 @@ static void petscinitialize_internal(char* filename, PetscInt len, PetscBool rea
 
   MPIU_BOOL = MPI_INT;
   MPIU_ENUM = MPI_INT;
+  MPIU_FORTRANADDR = (sizeof(void*) == sizeof(int)) ? MPI_INT : MPIU_INT64;
+  if (sizeof(size_t) == sizeof(unsigned)) MPIU_SIZE_T = MPI_UNSIGNED;
+  else if (sizeof(size_t) == sizeof(unsigned long)) MPIU_SIZE_T = MPI_UNSIGNED_LONG;
+#if defined(PETSC_SIZEOF_LONG_LONG)
+  else if (sizeof(size_t) == sizeof(unsigned long long)) MPIU_SIZE_T = MPI_UNSIGNED_LONG_LONG;
+#endif
+  else {(*PetscErrorPrintf)("PetscInitialize: Could not find MPI type for size_t\n"); return;}
 
 #if defined(PETSC_HAVE_COMPLEX)
   /*
@@ -416,7 +423,7 @@ static void petscinitialize_internal(char* filename, PetscInt len, PetscBool rea
   if (*ierr) {(*PetscErrorPrintf)("PetscInitialize:Creating MPI types\n");return;}
   *ierr = MPI_Type_commit(&MPIU_2SCALAR);
   if (*ierr) {(*PetscErrorPrintf)("PetscInitialize:Creating MPI types\n");return;}
-#if defined(PETSC_USE_64BIT_INDICES) || !defined(MPI_2INT)
+#if defined(PETSC_USE_64BIT_INDICES)
   *ierr = MPI_Type_contiguous(2,MPIU_INT,&MPIU_2INT);
   if (*ierr) {(*PetscErrorPrintf)("PetscInitialize:Creating MPI types\n");return;}
   *ierr = MPI_Type_commit(&MPIU_2INT);
@@ -442,8 +449,9 @@ static void petscinitialize_internal(char* filename, PetscInt len, PetscBool rea
     PETScParseFortranArgs_Private(&PetscGlobalArgc,&PetscGlobalArgs);
     FIXCHAR(filename,len,t1);
     *ierr = PetscOptionsInsert(NULL,&PetscGlobalArgc,&PetscGlobalArgs,t1);
-    FREECHAR(filename,t1);
     if (*ierr) {(*PetscErrorPrintf)("PetscInitialize:Creating options database\n");return;}
+    FREECHAR(filename,t1);
+    if (*ierr) {(*PetscErrorPrintf)("PetscInitialize:Freeing string in creating options database\n");return;}
   }
   *ierr = PetscOptionsCheckInitial_Private();
   if (*ierr) {(*PetscErrorPrintf)("PetscInitialize:Checking initial options\n");return;}

@@ -8,9 +8,13 @@ if __name__ == '__main__':
     '--download-f2cblaslapack',
     '--download-mpich',
     '--with-cc=clang',
-    '--with-cxx=0',
+    '--with-cxx=clang++',
     '--with-fc=0',
     'CFLAGS=-mavx',
-    'PETSC_ARCH=arch-linux-clang-avx',
+    'COPTFLAGS=-g -O',
+    #'FOPTFLAGS=-g -O',
+    'CXXOPTFLAGS=-g -O',
+    '--download-codipack=1',
+    '--download-adblaslapack=1',
   ]
   configure.petsc_configure(configure_options)

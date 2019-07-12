@@ -108,6 +108,7 @@ static PetscErrorCode KSPSolve_LSQR(KSP ksp)
 
   /* Test for nothing to do */
   ierr       = VecNorm(U,NORM_2,&rnorm);CHKERRQ(ierr);
+  KSPCheckNorm(ksp,rnorm);
   ierr       = PetscObjectSAWsTakeAccess((PetscObject)ksp);CHKERRQ(ierr);
   ksp->its   = 0;
   ksp->rnorm = rnorm;
@@ -122,6 +123,7 @@ static PetscErrorCode KSPSolve_LSQR(KSP ksp)
   ierr = KSP_MatMultTranspose(ksp,Amat,U,V);CHKERRQ(ierr);
   if (nopreconditioner) {
     ierr = VecNorm(V,NORM_2,&alpha);CHKERRQ(ierr);
+    KSPCheckNorm(ksp,rnorm);
   } else {
     /* this is an application of the preconditioner for the normal equations; not the operator, see the manual page */
     ierr = PCApply(ksp->pc,V,Z);CHKERRQ(ierr);
@@ -157,6 +159,7 @@ static PetscErrorCode KSPSolve_LSQR(KSP ksp)
     }
     ierr = VecAXPY(U1,-alpha,U);CHKERRQ(ierr);
     ierr = VecNorm(U1,NORM_2,&beta);CHKERRQ(ierr);
+    KSPCheckNorm(ksp,beta);
     if (beta > 0.0) {
       ierr = VecScale(U1,1.0/beta);CHKERRQ(ierr); /* beta*U1 = Amat*V - alpha*U */
       if (!lsqr->exact_norm) {
@@ -168,6 +171,7 @@ static PetscErrorCode KSPSolve_LSQR(KSP ksp)
     ierr = VecAXPY(V1,-beta,V);CHKERRQ(ierr);
     if (nopreconditioner) {
       ierr = VecNorm(V1,NORM_2,&alpha);CHKERRQ(ierr);
+      KSPCheckNorm(ksp,alpha);
     } else {
       ierr = PCApply(ksp->pc,V1,Z);CHKERRQ(ierr);
       ierr = VecDotRealPart(V1,Z,&alpha);CHKERRQ(ierr);
@@ -265,8 +269,6 @@ PetscErrorCode KSPDestroy_LSQR(KSP ksp)
 
    Level: intermediate
 
-.keywords: KSP, KSPLSQR
-
 .seealso: KSPSolve(), KSPLSQR, KSPLSQRGetStandardErrorVec()
 @*/
 PetscErrorCode  KSPLSQRSetComputeStandardErrorVec(KSP ksp, PetscBool flg)
@@ -293,8 +295,6 @@ PetscErrorCode  KSPLSQRSetComputeStandardErrorVec(KSP ksp, PetscBool flg)
    This can affect convergence rate as KSPLSQRConvergedDefault() assumes different value of ||A|| used in normal equation stopping criterion.
 
    Level: intermediate
-
-.keywords: KSP, KSPLSQR
 
 .seealso: KSPSolve(), KSPLSQR, KSPLSQRGetNorms(), KSPLSQRConvergedDefault()
 @*/
@@ -329,8 +329,6 @@ PetscErrorCode  KSPLSQRSetExactMatNorm(KSP ksp, PetscBool flg)
 
    Level: intermediate
 
-.keywords: KSP, KSPLSQR
-
 .seealso: KSPSolve(), KSPLSQR, KSPLSQRSetComputeStandardErrorVec()
 @*/
 PetscErrorCode  KSPLSQRGetStandardErrorVec(KSP ksp,Vec *se)
@@ -361,8 +359,6 @@ PetscErrorCode  KSPLSQRGetStandardErrorVec(KSP ksp,Vec *se)
 
    Level: intermediate
 
-.keywords: KSP, KSPLSQR
-
 .seealso: KSPSolve(), KSPLSQR, KSPLSQRSetExactMatNorm()
 @*/
 PetscErrorCode  KSPLSQRGetNorms(KSP ksp,PetscReal *arnorm, PetscReal *anorm)
@@ -379,7 +375,7 @@ PetscErrorCode  KSPLSQRGetNorms(KSP ksp,PetscReal *arnorm, PetscReal *anorm)
    KSPLSQRMonitorDefault - Print the residual norm at each iteration of the LSQR method,
    norm of the residual of the normal equations A'*A x = A' b, and estimate of matrix norm ||A||.
 
-   Collective on KSP
+   Collective on ksp
 
    Input Parameters:
 +  ksp   - iterative context
@@ -388,8 +384,6 @@ PetscErrorCode  KSPLSQRGetNorms(KSP ksp,PetscReal *arnorm, PetscReal *anorm)
 -  dummy - viewer and format context
 
    Level: intermediate
-
-.keywords: KSP, KSPLSQR, default, monitor, residual
 
 .seealso: KSPLSQR, KSPMonitorSet(), KSPMonitorTrueResidualNorm(), KSPMonitorLGResidualNormCreate(), KSPMonitorDefault()
 @*/
@@ -459,7 +453,7 @@ PetscErrorCode KSPView_LSQR(KSP ksp,PetscViewer viewer)
 /*@C
    KSPLSQRConvergedDefault - Determines convergence of the LSQR Krylov method.
 
-   Collective on KSP
+   Collective on ksp
 
    Input Parameters:
 +  ksp   - iterative context
@@ -481,8 +475,6 @@ PetscErrorCode KSPView_LSQR(KSP ksp,PetscViewer viewer)
    This criterion is now largely compatible with that in MATLAB lsqr().
 
    Level: intermediate
-
-.keywords: KSP, KSPLSQR, default, convergence, residual
 
 .seealso: KSPLSQR, KSPSetConvergenceTest(), KSPSetTolerances(), KSPConvergedSkip(), KSPConvergedReason, KSPGetConvergedReason(),
           KSPConvergedDefaultSetUIRNorm(), KSPConvergedDefaultSetUMIRNorm(), KSPConvergedDefaultCreate(), KSPConvergedDefaultDestroy(), KSPConvergedDefault(), KSPLSQRGetNorms(), KSPLSQRSetExactMatNorm()

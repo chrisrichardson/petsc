@@ -35,7 +35,7 @@ PetscErrorCode PCReset_GAMG(PC pc)
   PC_GAMG        *pc_gamg = (PC_GAMG*)mg->innerctx;
 
   PetscFunctionBegin;
-  if (pc_gamg->data) SETERRQ(PetscObjectComm((PetscObject)pc),PETSC_ERR_PLIB,"This should not happen, cleaned up in SetUp\n");
+  ierr = PetscFree(pc_gamg->data);CHKERRQ(ierr);
   pc_gamg->data_sz = 0;
   ierr = PetscFree(pc_gamg->orig_data);CHKERRQ(ierr);
   PetscFunctionReturn(0);
@@ -112,7 +112,7 @@ static PetscErrorCode PCGAMGCreateLevel_GAMG(PC pc,Mat Amat_fine,PetscInt cr_bs,
 #endif
     /* make 'is_eq_newproc' */
     ierr = PetscMalloc1(size, &counts);CHKERRQ(ierr);
-    if (pc_gamg->repart) {
+    if (pc_gamg->repart && new_size!=nactive) {
       /* Repartition Cmat_{k} and move colums of P^{k}_{k-1} and coordinates of primal part accordingly */
       Mat adj;
 
@@ -310,7 +310,7 @@ static PetscErrorCode PCGAMGCreateLevel_GAMG(PC pc,Mat Amat_fine,PetscInt cr_bs,
       Scatter the element vertex information (still in the original vertex ordering)
       to the correct processor
     */
-    ierr = VecScatterCreateWithData(src_crd, NULL, dest_crd, isscat, &vecscat);CHKERRQ(ierr);
+    ierr = VecScatterCreate(src_crd, NULL, dest_crd, isscat, &vecscat);CHKERRQ(ierr);
     ierr = ISDestroy(&isscat);CHKERRQ(ierr);
     ierr = VecScatterBegin(vecscat,src_crd,dest_crd,INSERT_VALUES,SCATTER_FORWARD);CHKERRQ(ierr);
     ierr = VecScatterEnd(vecscat,src_crd,dest_crd,INSERT_VALUES,SCATTER_FORWARD);CHKERRQ(ierr);
@@ -532,14 +532,14 @@ PetscErrorCode PCSetUp_GAMG(PC pc)
           ierr = pc_gamg->ops->optprolongator(pc, Aarr[level], &Prol11);CHKERRQ(ierr);
         }
 
+        if (pc_gamg->use_aggs_in_asm) {
+          PetscInt bs;
+          ierr = MatGetBlockSizes(Prol11, &bs, NULL);CHKERRQ(ierr);
+          ierr = PetscCDGetASMBlocks(agg_lists, bs, Gmat, &nASMBlocksArr[level], &ASMLocalIDsArr[level]);CHKERRQ(ierr);
+        }
+
         Parr[level1] = Prol11;
       } else Parr[level1] = NULL; /* failed to coarsen */
-
-      if (pc_gamg->use_aggs_in_asm) {
-        PetscInt bs;
-        ierr = MatGetBlockSizes(Prol11, &bs, NULL);CHKERRQ(ierr);
-        ierr = PetscCDGetASMBlocks(agg_lists, bs, Gmat, &nASMBlocksArr[level], &ASMLocalIDsArr[level]);CHKERRQ(ierr);
-      }
 
       ierr = MatDestroy(&Gmat);CHKERRQ(ierr);
       ierr = PetscCDDestroy(agg_lists);CHKERRQ(ierr);
@@ -730,8 +730,6 @@ PetscErrorCode PCDestroy_GAMG(PC pc)
 
    Level: intermediate
 
-   Concepts: Unstructured multigrid preconditioner
-
 .seealso: PCGAMGSetCoarseEqLim()
 @*/
 PetscErrorCode  PCGAMGSetProcEqLim(PC pc, PetscInt n)
@@ -766,9 +764,10 @@ static PetscErrorCode PCGAMGSetProcEqLim_GAMG(PC pc, PetscInt n)
    Options Database Key:
 .  -pc_gamg_coarse_eq_limit <limit>
 
-   Level: intermediate
+   Notes: For example -pc_gamg_coarse_eq_limit 1000 will stop coarsening once the coarse grid 
+     has less than 1000 unknowns.
 
-   Concepts: Unstructured multigrid preconditioner
+   Level: intermediate
 
 .seealso: PCGAMGSetProcEqLim()
 @*/
@@ -808,8 +807,6 @@ static PetscErrorCode PCGAMGSetCoarseEqLim_GAMG(PC pc, PetscInt n)
     this will generally improve the loading balancing of the work on each level
 
    Level: intermediate
-
-   Concepts: Unstructured multigrid preconditioner
 
 .seealso: ()
 @*/
@@ -851,8 +848,6 @@ static PetscErrorCode PCGAMGSetRepartition_GAMG(PC pc, PetscBool n)
     this may negatively affect the convergence rate of the method on new matrices if the matrix entries change a great deal, but allows
           rebuilding the preconditioner quicker.
 
-   Concepts: Unstructured multigrid preconditioner
-
 .seealso: ()
 @*/
 PetscErrorCode PCGAMGSetReuseInterpolation(PC pc, PetscBool n)
@@ -888,8 +883,6 @@ static PetscErrorCode PCGAMGSetReuseInterpolation_GAMG(PC pc, PetscBool n)
 .  -pc_gamg_asm_use_agg
 
    Level: intermediate
-
-   Concepts: Unstructured multigrid preconditioner
 
 .seealso: ()
 @*/
@@ -927,8 +920,6 @@ static PetscErrorCode PCGAMGASMSetUseAggs_GAMG(PC pc, PetscBool flg)
 
    Level: intermediate
 
-   Concepts: Unstructured multigrid preconditioner
-
 .seealso: ()
 @*/
 PetscErrorCode PCGAMGSetUseParallelCoarseGridSolve(PC pc, PetscBool flg)
@@ -964,8 +955,6 @@ static PetscErrorCode PCGAMGSetUseParallelCoarseGridSolve_GAMG(PC pc, PetscBool 
 .  -pc_mg_levels
 
    Level: intermediate
-
-   Concepts: Unstructured multigrid preconditioner
 
 .seealso: ()
 @*/
@@ -1007,8 +996,6 @@ static PetscErrorCode PCGAMGSetNlevels_GAMG(PC pc, PetscInt n)
 
    Level: intermediate
 
-   Concepts: Unstructured multigrid preconditioner
-
 .seealso: PCGAMGFilterGraph(), PCGAMGSetSquareGraph()
 @*/
 PetscErrorCode PCGAMGSetThreshold(PC pc, PetscReal v[], PetscInt n)
@@ -1046,8 +1033,6 @@ static PetscErrorCode PCGAMGSetThreshold_GAMG(PC pc, PetscReal v[], PetscInt n)
 
    Level: advanced
 
-   Concepts: Unstructured multigrid preconditioner
-
 .seealso: ()
 @*/
 PetscErrorCode PCGAMGSetThresholdScale(PC pc, PetscReal v)
@@ -1083,8 +1068,6 @@ static PetscErrorCode PCGAMGSetThresholdScale_GAMG(PC pc, PetscReal v)
 
    Level: intermediate
 
-   Concepts: Unstructured multigrid preconditioner
-
 .seealso: PCGAMGGetType(), PCGAMG, PCGAMGType
 @*/
 PetscErrorCode PCGAMGSetType(PC pc, PCGAMGType type)
@@ -1109,8 +1092,6 @@ PetscErrorCode PCGAMGSetType(PC pc, PCGAMGType type)
 .  type - the type of algorithm used
 
    Level: intermediate
-
-   Concepts: Unstructured multigrid preconditioner
 
 .seealso: PCGAMGSetType(), PCGAMGType
 @*/
@@ -1303,8 +1284,6 @@ PetscErrorCode PCSetFromOptions_GAMG(PetscOptionItems *PetscOptionsObject,PC pc)
 
   Level: intermediate
 
-  Concepts: algebraic multigrid
-
 .seealso:  PCCreate(), PCSetType(), MatSetBlockSize(), PCMGType, PCSetCoordinates(), MatSetNearNullSpace(), PCGAMGSetType(), PCGAMGAGG, PCGAMGGEO, PCGAMGCLASSICAL, PCGAMGSetProcEqLim(),
            PCGAMGSetCoarseEqLim(), PCGAMGSetRepartition(), PCGAMGRegister(), PCGAMGSetReuseInterpolation(), PCGAMGASMSetUseAggs(), PCGAMGSetUseParallelCoarseGridSolve(), PCGAMGSetNlevels(), PCGAMGSetThreshold(), PCGAMGGetType(), PCGAMGSetReuseInterpolation()
 M*/
@@ -1343,6 +1322,8 @@ PETSC_EXTERN PetscErrorCode PCCreate_GAMG(PC pc)
   pc->ops->destroy        = PCDestroy_GAMG;
   mg->view                = PCView_GAMG;
 
+  ierr = PetscObjectComposeFunction((PetscObject)pc,"PCMGGetLevels_C",PCMGGetLevels_MG);CHKERRQ(ierr);
+  ierr = PetscObjectComposeFunction((PetscObject)pc,"PCMGSetLevels_C",PCMGSetLevels_MG);CHKERRQ(ierr);
   ierr = PetscObjectComposeFunction((PetscObject)pc,"PCGAMGSetProcEqLim_C",PCGAMGSetProcEqLim_GAMG);CHKERRQ(ierr);
   ierr = PetscObjectComposeFunction((PetscObject)pc,"PCGAMGSetCoarseEqLim_C",PCGAMGSetCoarseEqLim_GAMG);CHKERRQ(ierr);
   ierr = PetscObjectComposeFunction((PetscObject)pc,"PCGAMGSetRepartition_C",PCGAMGSetRepartition_GAMG);CHKERRQ(ierr);
@@ -1373,12 +1354,10 @@ PETSC_EXTERN PetscErrorCode PCCreate_GAMG(PC pc)
 
 /*@C
  PCGAMGInitializePackage - This function initializes everything in the PCGAMG package. It is called
-    from PetscDLLibraryRegister() when using dynamic libraries, and on the first call to PCCreate_GAMG()
-    when using static libraries.
+    from PCInitializePackage().
 
  Level: developer
 
- .keywords: PC, PCGAMG, initialize, package
  .seealso: PetscInitialize()
 @*/
 PetscErrorCode PCGAMGInitializePackage(void)
@@ -1447,7 +1426,6 @@ PetscErrorCode PCGAMGInitializePackage(void)
 
  Level: developer
 
- .keywords: Petsc, destroy, package
  .seealso: PetscFinalize()
 @*/
 PetscErrorCode PCGAMGFinalizePackage(void)

@@ -23,10 +23,6 @@ static const char help[] = "1D multiphysics prototype with analytic Jacobians to
  * without copying values to extract submatrices.
  */
 
-/*T
-   TODO: Need to determine if deprecated
-T*/
-
 #include <petscsnes.h>
 #include <petscdm.h>
 #include <petscdmda.h>
@@ -345,7 +341,7 @@ int main(int argc, char *argv[])
   ierr = DMDAGetOwnershipRanges(dau,&lxu,0,0);CHKERRQ(ierr);
   ierr = DMDAGetInfo(dau,0, &m,0,0, &sizes,0,0, 0,0,0,0,0,0);CHKERRQ(ierr);
   ierr = PetscMalloc1(sizes,&lxk);CHKERRQ(ierr);
-  ierr = PetscMemcpy(lxk,lxu,sizes*sizeof(*lxk));CHKERRQ(ierr);
+  ierr = PetscArraycpy(lxk,lxu,sizes);CHKERRQ(ierr);
   lxk[0]--;
   ierr = DMDACreate1d(PETSC_COMM_WORLD,DM_BOUNDARY_NONE,m-1,1,1,lxk,&dak);CHKERRQ(ierr);
   ierr = DMSetOptionsPrefix(dak,"k_");CHKERRQ(ierr);

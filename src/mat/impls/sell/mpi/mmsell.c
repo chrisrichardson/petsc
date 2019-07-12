@@ -189,7 +189,7 @@ PetscErrorCode MatSetUpMultiply_MPISELL(Mat mat)
   /* create local vector that is used to scatter into */
   ierr = VecCreateSeq(PETSC_COMM_SELF,ec,&sell->lvec);CHKERRQ(ierr);
   /* create two temporary Index sets for build scatter gather */
-  ierr = ISCreateGeneral(((PetscObject)mat)->comm,ec,garray,PETSC_COPY_VALUES,&from);CHKERRQ(ierr);
+  ierr = ISCreateGeneral(PETSC_COMM_SELF,ec,garray,PETSC_COPY_VALUES,&from);CHKERRQ(ierr);
   ierr = ISCreateStride(PETSC_COMM_SELF,ec,0,1,&to);CHKERRQ(ierr);
 
   /* create temporary global vector to generate scatter context */
@@ -197,7 +197,7 @@ PetscErrorCode MatSetUpMultiply_MPISELL(Mat mat)
   ierr = VecCreateMPIWithArray(PetscObjectComm((PetscObject)mat),1,mat->cmap->n,mat->cmap->N,NULL,&gvec);CHKERRQ(ierr);
 
   /* generate the scatter context */
-  ierr = VecScatterCreateWithData(gvec,from,sell->lvec,to,&sell->Mvctx);CHKERRQ(ierr);
+  ierr = VecScatterCreate(gvec,from,sell->lvec,to,&sell->Mvctx);CHKERRQ(ierr);
   ierr = PetscLogObjectParent((PetscObject)mat,(PetscObject)sell->Mvctx);CHKERRQ(ierr);
   ierr = PetscLogObjectParent((PetscObject)mat,(PetscObject)sell->lvec);CHKERRQ(ierr);
   ierr = PetscLogObjectParent((PetscObject)mat,(PetscObject)from);CHKERRQ(ierr);

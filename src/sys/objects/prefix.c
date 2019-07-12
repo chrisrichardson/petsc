@@ -5,7 +5,35 @@
 #include <petsc/private/petscimpl.h>  /*I   "petscsys.h"    I*/
 
 /*@C
-   PetscObjectSetOptions - Sets the options database used by the object
+   PetscObjectGetOptions - Gets the options database used by the object. Call immediately after creating the object.
+
+   Collective on PetscObject
+
+   Input Parameter:
+.  obj - any PETSc object, for example a Vec, Mat or KSP.
+
+   Output Parameter:
+.  options - the options database
+
+   Notes:
+    if this is not called the object will use the default options database
+
+  Level: advanced
+
+.seealso: PetscOptionsCreate(), PetscOptionsDestroy(), PetscObjectSetOptionsPrefix(), PetscObjectAppendOptionsPrefix(), PetscObjectPrependOptionsPrefix(),
+          PetscObjectGetOptionsPrefix(), PetscObjectSetOptions()
+
+@*/
+PetscErrorCode  PetscObjectGetOptions(PetscObject obj,PetscOptions *options)
+{
+  PetscFunctionBegin;
+  PetscValidHeader(obj,1);
+  *options = obj->options;
+  PetscFunctionReturn(0);
+}
+
+/*@C
+   PetscObjectSetOptions - Sets the options database used by the object. Call immediately after creating the object.
 
    Collective on PetscObject
 
@@ -19,7 +47,7 @@
   Level: advanced
 
 .seealso: PetscOptionsCreate(), PetscOptionsDestroy(), PetscObjectSetOptionsPrefix(), PetscObjectAppendOptionsPrefix(), PetscObjectPrependOptionsPrefix(),
-          PetscObjectGetOptionsPrefix()
+          PetscObjectGetOptionsPrefix(), PetscObjectGetOptions()
 
 @*/
 PetscErrorCode  PetscObjectSetOptions(PetscObject obj,PetscOptions options)
@@ -44,8 +72,6 @@ PetscErrorCode  PetscObjectSetOptions(PetscObject obj,PetscOptions options)
    A hyphen (-) must NOT be given at the beginning of the prefix name.
    The first character of all runtime options is AUTOMATICALLY the
    hyphen.
-
-   Concepts: prefix^setting
 
   Level: advanced
 
@@ -83,8 +109,6 @@ PetscErrorCode  PetscObjectSetOptionsPrefix(PetscObject obj,const char prefix[])
    A hyphen (-) must NOT be given at the beginning of the prefix name.
    The first character of all runtime options is AUTOMATICALLY the
    hyphen.
-
-   Concepts: prefix^setting
 
   Level: advanced
 
@@ -125,8 +149,6 @@ PetscErrorCode  PetscObjectAppendOptionsPrefix(PetscObject obj,const char prefix
    Output Parameters:
 .  prefix - pointer to the prefix string used is returned
 
-   Concepts: prefix^getting
-
   Level: advanced
 
 .seealso: PetscOptionsCreate(), PetscOptionsDestroy(), PetscObjectSetOptionsPrefix(), PetscObjectAppendOptionsPrefix(), PetscObjectPrependOptionsPrefix(),
@@ -154,8 +176,6 @@ PetscErrorCode  PetscObjectGetOptionsPrefix(PetscObject obj,const char *prefix[]
    A hyphen (-) must NOT be given at the beginning of the prefix name.
    The first character of all runtime options is AUTOMATICALLY the
    hyphen.
-
-   Concepts: prefix^setting
 
   Level: advanced
 

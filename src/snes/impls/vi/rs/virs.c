@@ -37,7 +37,7 @@ typedef struct {
   PetscErrorCode (*createinterpolation)(DM,DM,Mat*,Vec*);  /* DM's original routines */
   PetscErrorCode (*coarsen)(DM, MPI_Comm, DM*);
   PetscErrorCode (*createglobalvector)(DM,Vec*);
-  PetscErrorCode (*getinjection)(DM,DM,Mat*);
+  PetscErrorCode (*createinjection)(DM,DM,Mat*);
   PetscErrorCode (*hascreateinjection)(DM,PetscBool*);
 
   DM dm;                                                  /* when destroying this object we need to reset the above function into the base DM */
@@ -58,15 +58,6 @@ PetscErrorCode  DMCreateGlobalVector_SNESVI(DM dm,Vec *vec)
   if (!isnes) SETERRQ(PetscObjectComm((PetscObject)dm),PETSC_ERR_PLIB,"Composed SNES is missing");
   ierr = PetscContainerGetPointer(isnes,(void**)&dmsnesvi);CHKERRQ(ierr);
   ierr = VecCreateMPI(PetscObjectComm((PetscObject)dm),dmsnesvi->n,PETSC_DETERMINE,vec);CHKERRQ(ierr);
-  PetscFunctionReturn(0);
-}
-
-static PetscErrorCode DMHasCreateInjection_SNESVI(DM dm, PetscBool *flg)
-{
-  PetscFunctionBegin;
-  PetscValidHeaderSpecific(dm,DM_CLASSID,1);
-  PetscValidPointer(flg,2);
-  *flg = PETSC_FALSE;
   PetscFunctionReturn(0);
 }
 
@@ -189,7 +180,7 @@ PetscErrorCode DMDestroy_SNESVI(DM_SNESVI *dmsnesvi)
   dmsnesvi->dm->ops->createinterpolation = dmsnesvi->createinterpolation;
   dmsnesvi->dm->ops->coarsen             = dmsnesvi->coarsen;
   dmsnesvi->dm->ops->createglobalvector  = dmsnesvi->createglobalvector;
-  dmsnesvi->dm->ops->getinjection        = dmsnesvi->getinjection;
+  dmsnesvi->dm->ops->createinjection     = dmsnesvi->createinjection;
   dmsnesvi->dm->ops->hascreateinjection  = dmsnesvi->hascreateinjection;
   /* need to clear out this vectors because some of them may not have a reference to the DM
     but they are counted as having references to the DM in DMDestroy() */
@@ -231,10 +222,10 @@ static PetscErrorCode DMSetVI(DM dm,IS inactive)
     dm->ops->coarsen              = DMCoarsen_SNESVI;
     dmsnesvi->createglobalvector  = dm->ops->createglobalvector;
     dm->ops->createglobalvector   = DMCreateGlobalVector_SNESVI;
-    dmsnesvi->getinjection        = dm->ops->getinjection;
-    dm->ops->getinjection         = NULL;
+    dmsnesvi->createinjection     = dm->ops->createinjection;
+    dm->ops->createinjection      = NULL;
     dmsnesvi->hascreateinjection  = dm->ops->hascreateinjection;
-    dm->ops->hascreateinjection   = DMHasCreateInjection_SNESVI;
+    dm->ops->hascreateinjection   = NULL;
   } else {
     ierr = PetscContainerGetPointer(isnes,(void**)&dmsnesvi);CHKERRQ(ierr);
     ierr = ISDestroy(&dmsnesvi->inactive);CHKERRQ(ierr);
@@ -393,7 +384,7 @@ PetscErrorCode SNESSolve_VINEWTONRSLS(SNES snes)
       ierr = (*snes->ops->update)(snes, snes->iter);CHKERRQ(ierr);
     }
     ierr = SNESComputeJacobian(snes,X,snes->jacobian,snes->jacobian_pre);CHKERRQ(ierr);
-
+    SNESCheckJacobianDomainerror(snes);
 
     /* Create active and inactive index sets */
 
@@ -467,8 +458,8 @@ PetscErrorCode SNESSolve_VINEWTONRSLS(SNES snes)
     ierr = SNESCreateSubVectors_VINEWTONRSLS(snes,nis_inact,&Y_inact);CHKERRQ(ierr);
 
     /* Create scatter contexts */
-    ierr = VecScatterCreateWithData(Y,IS_act,Y_act,NULL,&scat_act);CHKERRQ(ierr);
-    ierr = VecScatterCreateWithData(Y,vi->IS_inact,Y_inact,NULL,&scat_inact);CHKERRQ(ierr);
+    ierr = VecScatterCreate(Y,IS_act,Y_act,NULL,&scat_act);CHKERRQ(ierr);
+    ierr = VecScatterCreate(Y,vi->IS_inact,Y_inact,NULL,&scat_inact);CHKERRQ(ierr);
 
     /* Do a vec scatter to active and inactive set vectors */
     ierr = VecScatterBegin(scat_inact,F,F_inact,INSERT_VALUES,SCATTER_FORWARD);CHKERRQ(ierr);
@@ -605,6 +596,8 @@ PetscErrorCode SNESSolve_VINEWTONRSLS(SNES snes)
     ierr       = PetscObjectSAWsTakeAccess((PetscObject)snes);CHKERRQ(ierr);
     snes->iter = i+1;
     snes->norm = fnorm;
+    snes->xnorm = xnorm;
+    snes->ynorm = ynorm;
     ierr       = PetscObjectSAWsGrantAccess((PetscObject)snes);CHKERRQ(ierr);
     ierr       = SNESLogConvergenceHistory(snes,snes->norm,lits);CHKERRQ(ierr);
     ierr       = SNESMonitor(snes,snes->iter,snes->norm);CHKERRQ(ierr);
@@ -657,9 +650,9 @@ PetscErrorCode SNESVIRedundancyCheck_Matlab(SNES snes,IS is_act,IS *is_redact,vo
    bet set by the Matlab function */
   ierr = ISCreateGeneral(PetscObjectComm((PetscObject)snes),0,indices,PETSC_OWN_POINTER,is_redact);CHKERRQ(ierr);
   /* call Matlab function in ctx */
-  ierr    = PetscMemcpy(&ls,&snes,sizeof(snes));CHKERRQ(ierr);
-  ierr    = PetscMemcpy(&l1,&is_act,sizeof(is_act));CHKERRQ(ierr);
-  ierr    = PetscMemcpy(&l2,is_redact,sizeof(is_act));CHKERRQ(ierr);
+  ierr    = PetscArraycpy(&ls,&snes,1);CHKERRQ(ierr);
+  ierr    = PetscArraycpy(&l1,&is_act,1);CHKERRQ(ierr);
+  ierr    = PetscArraycpy(&l2,is_redact,1);CHKERRQ(ierr);
   prhs[0] = mxCreateDoubleScalar((double)ls);
   prhs[1] = mxCreateDoubleScalar((double)l1);
   prhs[2] = mxCreateDoubleScalar((double)l2);
@@ -766,6 +759,7 @@ PETSC_EXTERN PetscErrorCode SNESCreate_VINEWTONRSLS(SNES snes)
 {
   PetscErrorCode    ierr;
   SNES_VINEWTONRSLS *vi;
+  SNESLineSearch    linesearch;
 
   PetscFunctionBegin;
   snes->ops->reset          = SNESReset_VINEWTONRSLS;
@@ -778,6 +772,10 @@ PETSC_EXTERN PetscErrorCode SNESCreate_VINEWTONRSLS(SNES snes)
 
   snes->usesksp = PETSC_TRUE;
   snes->usesnpc = PETSC_FALSE;
+
+  ierr = SNESGetLineSearch(snes, &linesearch);CHKERRQ(ierr);
+  ierr = SNESLineSearchSetType(linesearch, SNESLINESEARCHBT);CHKERRQ(ierr);
+  ierr = SNESLineSearchBTSetAlpha(linesearch, 0.0);CHKERRQ(ierr);
 
   snes->alwayscomputesfinalresidual = PETSC_TRUE;
 

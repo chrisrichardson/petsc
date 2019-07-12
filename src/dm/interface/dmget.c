@@ -27,8 +27,6 @@
 
    VecStride*() operations can be useful when using DM with dof > 1
 
-.keywords: distributed array, create, local, vector
-
 .seealso: DMCreateGlobalVector(), VecDuplicate(), VecDuplicateVecs(),
           DMDACreate1d(), DMDACreate2d(), DMDACreate3d(), DMGlobalToLocalBegin(),
           DMGlobalToLocalEnd(), DMLocalToGlobalBegin(), DMCreateLocalVector(), DMRestoreLocalVector(),
@@ -73,8 +71,6 @@ alldone:
 
    Level: beginner
 
-.keywords: distributed array, create, local, vector
-
 .seealso: DMCreateGlobalVector(), VecDuplicate(), VecDuplicateVecs(),
           DMDACreate1d(), DMDACreate2d(), DMDACreate3d(), DMGlobalToLocalBegin(),
           DMGlobalToLocalEnd(), DMLocalToGlobalBegin(), DMCreateLocalVector(), DMGetLocalVector()
@@ -108,7 +104,7 @@ alldone:
    DMGetGlobalVector - Gets a MPI PETSc vector that
    may be used with the DMXXX routines.
 
-   Collective on DM
+   Collective on dm
 
    Input Parameter:
 .  dm - the distributed array
@@ -130,8 +126,6 @@ alldone:
    code you should use DMCreateGlobalVector().
 
    VecStride*() operations can be useful when using DM with dof > 1
-
-.keywords: distributed array, create, Global, vector
 
 .seealso: DMCreateGlobalVector(), VecDuplicate(), VecDuplicateVecs(),
           DMDACreate1d(), DMDACreate2d(), DMDACreate3d(), DMGlobalToLocalBegin(),
@@ -169,14 +163,12 @@ alldone:
 /*@
    DMClearGlobalVectors - Destroys all the global vectors that have been stashed in this DM
 
-   Collective on DM
+   Collective on dm
 
    Input Parameter:
 .  dm - the distributed array
 
    Level: developer
-
-.keywords: distributed array, create, Global, vector
 
 .seealso: DMCreateGlobalVector(), VecDuplicate(), VecDuplicateVecs(),
           DMDACreate1d(), DMDACreate2d(), DMDACreate3d(), DMGlobalToLocalBegin(),
@@ -204,14 +196,12 @@ PetscErrorCode  DMClearGlobalVectors(DM dm)
 /*@
    DMClearLocalVectors - Destroys all the local vectors that have been stashed in this DM
 
-   Collective on DM
+   Collective on dm
 
    Input Parameter:
 .  dm - the distributed array
 
    Level: developer
-
-.keywords: distributed array, create, Local, vector
 
 .seealso: DMCreateLocalVector(), VecDuplicate(), VecDuplicateVecs(),
           DMDACreate1d(), DMDACreate2d(), DMDACreate3d(), DMLocalToLocalBegin(),
@@ -249,8 +239,6 @@ PetscErrorCode  DMClearLocalVectors(DM dm)
 
    Level: beginner
 
-.keywords: distributed array, create, global, vector
-
 .seealso: DMCreateGlobalVector(), VecDuplicate(), VecDuplicateVecs(),
           DMDACreate1d(), DMDACreate2d(), DMDACreate3d(), DMGlobalToGlobalBegin(),
           DMGlobalToGlobalEnd(), DMGlobalToGlobal(), DMCreateLocalVector(), DMGetGlobalVector()
@@ -263,7 +251,7 @@ PetscErrorCode  DMRestoreGlobalVector(DM dm,Vec *g)
   PetscFunctionBegin;
   PetscValidHeaderSpecific(dm,DM_CLASSID,1);
   PetscValidPointer(g,2);
-  VecLocked(*g, 2);
+  ierr = VecSetErrorIfLocked(*g, 2);CHKERRQ(ierr);
   for (j=0; j<DM_MAX_WORK_VECTORS; j++) {
     if (*g == dm->globalout[j]) {
       dm->globalout[j] = NULL;
@@ -323,7 +311,7 @@ PetscErrorCode DMHasNamedGlobalVector(DM dm,const char *name,PetscBool *exists)
 /*@C
    DMGetNamedGlobalVector - get access to a named, persistent global vector
 
-   Collective on DM
+   Collective on dm
 
    Input Arguments:
 +  dm - DM to hold named vectors
@@ -372,7 +360,7 @@ found:
 /*@C
    DMRestoreNamedGlobalVector - restore access to a named, persistent global vector
 
-   Collective on DM
+   Collective on dm
 
    Input Arguments:
 +  dm - DM on which the vector was gotten

@@ -116,13 +116,16 @@ static PetscErrorCode KSPSolve_FCG(KSP ksp)
     case KSP_NORM_PRECONDITIONED:
       ierr = KSP_PCApply(ksp,R,Z);CHKERRQ(ierr);               /*   z <- Br         */
       ierr = VecNorm(Z,NORM_2,&dp);CHKERRQ(ierr);              /*   dp <- dqrt(z'*z) = sqrt(e'*A'*B'*B*A*e)     */
+      KSPCheckNorm(ksp,dp);
       break;
     case KSP_NORM_UNPRECONDITIONED:
       ierr = VecNorm(R,NORM_2,&dp);CHKERRQ(ierr);              /*   dp <- sqrt(r'*r) = sqrt(e'*A'*A*e)     */
+      KSPCheckNorm(ksp,dp);
       break;
     case KSP_NORM_NATURAL:
       ierr = KSP_PCApply(ksp,R,Z);CHKERRQ(ierr);               /*   z <- Br         */
       ierr = VecXDot(R,Z,&s);CHKERRQ(ierr);
+      KSPCheckDot(ksp,s);
       dp = PetscSqrtReal(PetscAbsScalar(s));                   /*   dp <- sqrt(r'*z) = sqrt(e'*A'*B*A*e)  */
       break;
     case KSP_NORM_NONE:
@@ -202,6 +205,7 @@ static PetscErrorCode KSPSolve_FCG(KSP ksp)
     /* Update X and R */
     betaold = beta;
     ierr = VecXDot(Pcurr,R,&beta);CHKERRQ(ierr);                 /*  beta <- pi'*r       */
+    KSPCheckDot(ksp,beta);
     ierr = KSP_MatMult(ksp,Amat,Pcurr,Ccurr);CHKERRQ(ierr);      /*  w <- A*pi (stored in ci)   */
     ierr = VecXDot(Pcurr,Ccurr,&dpi);CHKERRQ(ierr);              /*  dpi <- pi'*w        */
     alphaold = alpha;
@@ -214,13 +218,16 @@ static PetscErrorCode KSPSolve_FCG(KSP ksp)
       case KSP_NORM_PRECONDITIONED:
         ierr = KSP_PCApply(ksp,R,Z);CHKERRQ(ierr);               /*   z <- Br             */
         ierr = VecNorm(Z,NORM_2,&dp);CHKERRQ(ierr);              /*   dp <- sqrt(z'*z) = sqrt(e'*A'*B'*B*A*e)  */
-        break;
+        KSPCheckNorm(ksp,dp);
+      break;
       case KSP_NORM_UNPRECONDITIONED:
         ierr = VecNorm(R,NORM_2,&dp);CHKERRQ(ierr);              /*   dp <- sqrt(r'*r) = sqrt(e'*A'*A*e)   */
+        KSPCheckNorm(ksp,dp);
         break;
       case KSP_NORM_NATURAL:
         ierr = KSP_PCApply(ksp,R,Z);CHKERRQ(ierr);               /*   z <- Br             */
         ierr = VecXDot(R,Z,&s);CHKERRQ(ierr);
+        KSPCheckDot(ksp,s);
         dp = PetscSqrtReal(PetscAbsScalar(s));                   /*   dp <- sqrt(r'*z) = sqrt(e'*A'*B*A*e)  */
         break;
       case KSP_NORM_NONE:
@@ -319,7 +326,7 @@ static PetscErrorCode KSPView_FCG(KSP ksp,PetscViewer viewer)
   and whether all are used in each iteration also depends on the truncation strategy
   (see KSPFCGSetTruncationType())
 
-  Logically Collective on KSP
+  Logically Collective on ksp
 
   Input Parameters:
 +  ksp - the Krylov space context
@@ -361,8 +368,6 @@ PetscErrorCode KSPFCGSetMmax(KSP ksp,PetscInt mmax)
 
    Level: intermediate
 
-.keywords: KSP, FCG, truncation
-
 .seealso: KSPFCG, KSPFCGGetTruncationType(), KSPFCGGetNprealloc(), KSPFCGSetMmax()
 @*/
 
@@ -379,7 +384,7 @@ PetscErrorCode KSPFCGGetMmax(KSP ksp,PetscInt *mmax)
 /*@
   KSPFCGSetNprealloc - set the number of directions to preallocate with FCG
 
-  Logically Collective on KSP
+  Logically Collective on ksp
 
   Input Parameters:
 +  ksp - the Krylov space context
@@ -417,8 +422,6 @@ PetscErrorCode KSPFCGSetNprealloc(KSP ksp,PetscInt nprealloc)
 
    Level: advanced
 
-.keywords: KSP, FCG, truncation
-
 .seealso: KSPFCG, KSPFCGGetTruncationType(), KSPFCGSetNprealloc()
 @*/
 PetscErrorCode KSPFCGGetNprealloc(KSP ksp,PetscInt *nprealloc)
@@ -434,7 +437,7 @@ PetscErrorCode KSPFCGGetNprealloc(KSP ksp,PetscInt *nprealloc)
 /*@
   KSPFCGSetTruncationType - specify how many of its stored previous directions FCG uses during orthoganalization
 
-  Logically Collective on KSP
+  Logically Collective on ksp
 
   KSP_FCD_TRUNC_TYPE_STANDARD uses all (up to mmax) stored directions
   KSP_FCD_TRUNC_TYPE_NOTAY uses the last max(1,mod(i,mmax)) stored directions at iteration i=0,1,..
@@ -473,8 +476,6 @@ PetscErrorCode KSPFCGSetTruncationType(KSP ksp,KSPFCDTruncationType truncstrat)
 .  truncstrat - the strategy type
 
    Level: intermediate
-
-.keywords: KSP, FCG, truncation
 
 .seealso: KSPFCG, KSPFCGSetTruncationType, KSPFCDTruncationType
 @*/

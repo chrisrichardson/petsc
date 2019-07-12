@@ -11,6 +11,7 @@ and matrices.
 #include <petsc/private/petscimpl.h>
 
 PETSC_EXTERN PetscBool ISRegisterAllCalled;
+PETSC_EXTERN PetscBool ISLocalToGlobalMappingRegisterAllCalled;
 PETSC_EXTERN PetscErrorCode ISRegisterAll(void);
 
 struct _ISOps {
@@ -140,6 +141,11 @@ struct _p_PetscSectionSym {
   SymWorkLink workout;
 };
 
-
 PETSC_EXTERN PetscErrorCode ISIntersect_Caching_Internal(IS, IS, IS *);
+
+#if defined(PETSC_HAVE_HDF5)
+#include <H5Ipublic.h>
+PETSC_EXTERN PetscErrorCode PetscViewerHDF5Load_Private(PetscViewer,const char *,PetscLayout,hid_t,void**);
+#endif
+
 #endif

@@ -1,6 +1,9 @@
 #!/usr/bin/env python
 
 configure_options = [
+  'COPTFLAGS=-g -O',
+  'FOPTFLAGS=-g -O',
+  'CXXOPTFLAGS=-g -O',
   '--with-single-library=0',
   '--with-clanguage=cxx',
   '--download-mpich=1',
@@ -18,8 +21,7 @@ configure_options = [
   '--download-mumps=1',
   '--download-parms=1',
   '--download-ctetgen=1',
-  #'--download-elemental=1',
-  #'--with-cxx-dialect=C++11', hdf5 conflicts with C++11
+  '--download-elemental=1',
   '--download-spai=1',
   '--download-chaco=1',
   '--download-netcdf=1',

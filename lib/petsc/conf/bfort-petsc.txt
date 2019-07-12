@@ -139,6 +139,7 @@ nativeptr PetscIntStack
 nativeptr PetscLayout
 nativeptr PetscObjectList
 nativeptr PetscOptions
+nativeptr PetscPartitioner
 nativeptr PetscDS
 nativeptr PetscSegBuffer
 nativeptr PetscSpace
@@ -153,7 +154,6 @@ nativeptr TSMonitorDrawCtx
 nativeptr TSMonitorLGCtx
 nativeptr TSMonitorSPEigCtx
 nativeptr PetscSFNode
-nativeptr PetscGLL
 
 # the following are old PETSc types - they might be requird for older versions
 # of PETSc

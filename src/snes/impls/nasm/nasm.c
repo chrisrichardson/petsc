@@ -283,8 +283,6 @@ static PetscErrorCode SNESView_NASM(SNES snes, PetscViewer viewer)
 
    Level: intermediate
 
-.keywords: SNES, NASM
-
 .seealso: SNESNASM, SNESNASMGetType(), PCASMSetType()
 @*/
 PetscErrorCode SNESNASMSetType(SNES snes,PCASMType type)
@@ -321,8 +319,6 @@ static PetscErrorCode SNESNASMSetType_NASM(SNES snes,PCASMType type)
 
    Level: intermediate
 
-.keywords: SNES, NASM
-
 .seealso: SNESNASM, SNESNASMSetType(), PCASMGetType()
 @*/
 PetscErrorCode SNESNASMGetType(SNES snes,PCASMType *type)
@@ -357,8 +353,6 @@ static PetscErrorCode SNESNASMGetType_NASM(SNES snes,PCASMType *type)
 -  gscatter - scatters into the (ghosted) local vector of the local subdomain
 
    Level: intermediate
-
-.keywords: SNES, NASM
 
 .seealso: SNESNASM, SNESNASMGetSubdomains()
 @*/
@@ -443,8 +437,6 @@ static PetscErrorCode SNESNASMSetSubdomains_NASM(SNES snes,PetscInt n,SNES subsn
 
    Level: intermediate
 
-.keywords: SNES, NASM
-
 .seealso: SNESNASM, SNESNASMSetSubdomains()
 @*/
 PetscErrorCode SNESNASMGetSubdomains(SNES snes,PetscInt *n,SNES *subsnes[],VecScatter *iscatter[],VecScatter *oscatter[],VecScatter *gscatter[])
@@ -491,8 +483,6 @@ static PetscErrorCode SNESNASMGetSubdomains_NASM(SNES snes,PetscInt *n,SNES *sub
 
    Level: developer
 
-.keywords: SNES, NASM
-
 .seealso: SNESNASM, SNESNASMGetSubdomains()
 @*/
 PetscErrorCode SNESNASMGetSubdomainVecs(SNES snes,PetscInt *n,Vec **x,Vec **y,Vec **b, Vec **xl)
@@ -534,8 +524,6 @@ static PetscErrorCode SNESNASMGetSubdomainVecs_NASM(SNES snes,PetscInt *n,Vec **
     This is used almost exclusively in the implementation of ASPIN, where the converged subdomain and global jacobian
    is needed at each linear iteration.
 
-.keywords: SNES, NASM, ASPIN
-
 .seealso: SNESNASM, SNESNASMGetSubdomains()
 @*/
 PetscErrorCode SNESNASMSetComputeFinalJacobian(SNES snes,PetscBool flg)
@@ -555,7 +543,6 @@ static PetscErrorCode SNESNASMSetComputeFinalJacobian_NASM(SNES snes,PetscBool f
 
   PetscFunctionBegin;
   nasm->finaljacobian = flg;
-  if (flg) snes->usesksp = PETSC_TRUE;
   PetscFunctionReturn(0);
 }
 
@@ -572,8 +559,6 @@ static PetscErrorCode SNESNASMSetComputeFinalJacobian_NASM(SNES snes,PetscBool f
 
    Notes:
     The new solution is obtained as old solution plus dmp times (sum of the solutions on the subdomains)
-
-.keywords: SNES, NASM, damping
 
 .seealso: SNESNASM, SNESNASMGetDamping()
 @*/
@@ -607,8 +592,6 @@ static PetscErrorCode SNESNASMSetDamping_NASM(SNES snes,PetscReal dmp)
 -  dmp - damping
 
    Level: intermediate
-
-.keywords: SNES, NASM, damping
 
 .seealso: SNESNASM, SNESNASMSetDamping()
 @*/
@@ -855,7 +838,10 @@ static PetscErrorCode SNESSolve_NASM(SNES snes)
     /* Call general purpose update function */
     if (snes->ops->update) {ierr = (*snes->ops->update)(snes, snes->iter);CHKERRQ(ierr);}
   }
-  if (nasm->finaljacobian) {ierr = SNESNASMComputeFinalJacobian_Private(snes,X);CHKERRQ(ierr);}
+  if (nasm->finaljacobian) {
+    ierr = SNESNASMComputeFinalJacobian_Private(snes,X);CHKERRQ(ierr);
+    SNESCheckJacobianDomainerror(snes);
+  }
   if (normschedule == SNES_NORM_ALWAYS) {
     if (i == snes->max_its) {
       ierr = PetscInfo1(snes,"Maximum number of iterations has been reached: %D\n",snes->max_its);CHKERRQ(ierr);
@@ -879,6 +865,13 @@ static PetscErrorCode SNESSolve_NASM(SNES snes)
 -  -sub_pc_ - options prefix of the subdomain preconditioner
 
    Level: advanced
+
+   Developer Note: This is a non-Newton based nonlinear solver that does not directly require a Jacobian; hence the flag snes->usesksp is set to
+       false and SNESView() and -snes_view do not display a KSP object. However the flag nasm->finaljacobian is set (for example if
+       NASM is used as a nonlinear preconditioner for  KSPASPIN) then SNESSetUpMatrices() is called to generate the Jacobian (needed by KSPASPIN)
+       and this utilizes the KSP for storing the matrices, but the KSP is never used for solving a linear system. Note that when SNESNASM is
+       used by SNESASPIN they share the same Jacobian matrices because SNESSetUp() (called on the outer SNES KSPASPIN) causes the inner SNES
+       object (in this case SNESNASM) to inherit the outer Jacobian matrices.
 
    References:
 .  1. - Peter R. Brune, Matthew G. Knepley, Barry F. Smith, and Xuemin Tu, "Composing Scalable Nonlinear Algebraic Solvers",
@@ -960,8 +953,6 @@ PETSC_EXTERN PetscErrorCode SNESCreate_NASM(SNES snes)
 
    Level: intermediate
 
-.keywords: SNES, NASM
-
 .seealso: SNESNASM, SNESNASMGetNumber()
 @*/
 PetscErrorCode SNESNASMGetSNES(SNES snes,PetscInt i,SNES *subsnes)
@@ -987,8 +978,6 @@ PetscErrorCode SNESNASMGetSNES(SNES snes,PetscInt i,SNES *subsnes)
 
    Level: intermediate
 
-.keywords: SNES, NASM
-
 .seealso: SNESNASM, SNESNASMGetSNES()
 @*/
 PetscErrorCode SNESNASMGetNumber(SNES snes,PetscInt *n)
@@ -1010,8 +999,6 @@ PetscErrorCode SNESNASMGetNumber(SNES snes,PetscInt *n)
 -  weight - the weights to use (typically 1/N for each dof, where N is the number of patches it appears in)
 
    Level: intermediate
-
-.keywords: SNES, NASM
 
 .seealso: SNESNASM
 @*/

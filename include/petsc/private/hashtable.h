@@ -1,5 +1,5 @@
-#if !defined(_PETSC_HASHTABLE_H)
-#define _PETSC_HASHTABLE_H
+#if !defined(PETSC_HASHTABLE_H)
+#define PETSC_HASHTABLE_H
 
 #include <petsc/private/petscimpl.h>
 
@@ -190,7 +190,7 @@ PETSC_STATIC_INLINE PetscHash_t PetscHash_UInt64(PetscHash64_t key)
 
 PETSC_STATIC_INLINE PetscHash_t PetscHashInt(PetscInt key)
 {
-#if PETSC_USE_64BIT_INDICES
+#if defined(PETSC_USE_64BIT_INDICES)
   return PetscHash_UInt64((PetscHash64_t)key);
 #else
   return PetscHash_UInt32((PetscHash32_t)key);
@@ -207,4 +207,4 @@ PETSC_STATIC_INLINE PetscHash_t PetscHashCombine(PetscHash_t seed, PetscHash_t h
 #define PetscHashEqual(a,b) ((a) == (b))
 
 
-#endif /* _PETSC_HASHTABLE_H */
+#endif /* PETSC_HASHTABLE_H */

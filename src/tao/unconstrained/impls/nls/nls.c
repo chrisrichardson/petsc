@@ -62,7 +62,7 @@ static PetscErrorCode TaoSolve_NLS(Tao tao)
 
   PetscFunctionBegin;
   if (tao->XL || tao->XU || tao->ops->computebounds) {
-    ierr = PetscPrintf(((PetscObject)tao)->comm,"WARNING: Variable bounds have been set but will be ignored by nls algorithm\n");CHKERRQ(ierr);
+    ierr = PetscInfo(tao,"WARNING: Variable bounds have been set but will be ignored by nls algorithm\n");CHKERRQ(ierr);
   }
 
   /* Initialized variables */
@@ -82,9 +82,9 @@ static PetscErrorCode TaoSolve_NLS(Tao tao)
      Will be reset during the first iteration
   */
   ierr = KSPGetType(tao->ksp,&ksp_type);CHKERRQ(ierr);
-  ierr = PetscStrcmp(ksp_type,KSPCGNASH,&is_nash);CHKERRQ(ierr);
-  ierr = PetscStrcmp(ksp_type,KSPCGSTCG,&is_stcg);CHKERRQ(ierr);
-  ierr = PetscStrcmp(ksp_type,KSPCGGLTR,&is_gltr);CHKERRQ(ierr);
+  ierr = PetscStrcmp(ksp_type,KSPNASH,&is_nash);CHKERRQ(ierr);
+  ierr = PetscStrcmp(ksp_type,KSPSTCG,&is_stcg);CHKERRQ(ierr);
+  ierr = PetscStrcmp(ksp_type,KSPGLTR,&is_gltr);CHKERRQ(ierr);
 
   ierr = KSPCGSetRadius(tao->ksp,nlsP->max_radius);CHKERRQ(ierr);
 
@@ -126,7 +126,7 @@ static PetscErrorCode TaoSolve_NLS(Tao tao)
   /* Initialize trust-region radius.  The initialization is only performed
      when we are using Nash, Steihaug-Toint or the Generalized Lanczos method. */
   if (is_nash || is_stcg || is_gltr) {
-    switch(nlsP->init_type) {
+    switch (nlsP->init_type) {
     case NLS_INIT_CONSTANT:
       /* Use the initial radius specified */
       break;
@@ -256,7 +256,7 @@ static PetscErrorCode TaoSolve_NLS(Tao tao)
   while (tao->reason == TAO_CONTINUE_ITERATING) {
     /* Call general purpose update function */
     if (tao->ops->update) {
-      ierr = (*tao->ops->update)(tao, tao->niter);CHKERRQ(ierr);
+      ierr = (*tao->ops->update)(tao, tao->niter, tao->user_update);CHKERRQ(ierr);
     }
     ++tao->niter;
     tao->ksp_its=0;
@@ -357,7 +357,7 @@ static PetscErrorCode TaoSolve_NLS(Tao tao)
         /* Initialize the perturbation */
         pert = PetscMin(nlsP->imax, PetscMax(nlsP->imin, nlsP->imfac * gnorm));
         if (is_gltr) {
-          ierr = KSPCGGLTRGetMinEig(tao->ksp,&e_min);CHKERRQ(ierr);
+          ierr = KSPGLTRGetMinEig(tao->ksp,&e_min);CHKERRQ(ierr);
           pert = PetscMax(pert, -e_min);
         }
       } else {
@@ -419,7 +419,7 @@ static PetscErrorCode TaoSolve_NLS(Tao tao)
           /* Initialize the perturbation */
           pert = PetscMin(nlsP->imax, PetscMax(nlsP->imin, nlsP->imfac * gnorm));
           if (is_gltr) {
-            ierr = KSPCGGLTRGetMinEig(tao->ksp, &e_min);CHKERRQ(ierr);
+            ierr = KSPGLTRGetMinEig(tao->ksp, &e_min);CHKERRQ(ierr);
             pert = PetscMax(pert, -e_min);
           }
         } else {
@@ -462,7 +462,7 @@ static PetscErrorCode TaoSolve_NLS(Tao tao)
           /* Initialize the perturbation */
           pert = PetscMin(nlsP->imax, PetscMax(nlsP->imin, nlsP->imfac * gnorm));
           if (is_gltr) {
-            ierr = KSPCGGLTRGetMinEig(tao->ksp,&e_min);CHKERRQ(ierr);
+            ierr = KSPGLTRGetMinEig(tao->ksp,&e_min);CHKERRQ(ierr);
             pert = PetscMax(pert, -e_min);
           }
         } else {
@@ -840,9 +840,7 @@ static PetscErrorCode TaoView_NLS(Tao tao, PetscViewer viewer)
               min_t f(xk + t d_k)
 
     Options Database Keys:
-+ -tao_nls_pc_type - "none","ahess","bfgs","petsc"
-. -tao_nls_bfgs_scale_type - "ahess","phess","bfgs"
-. -tao_nls_init_type - "constant","direction","interpolation"
++ -tao_nls_init_type - "constant","direction","interpolation"
 . -tao_nls_update_type - "step","direction","interpolation"
 . -tao_nls_sval - perturbation starting value
 . -tao_nls_imin - minimum initial perturbation
@@ -974,15 +972,16 @@ PETSC_EXTERN PetscErrorCode TaoCreate_NLS(Tao tao)
   nlsP->update_type     = NLS_UPDATE_STEP;
 
   ierr = TaoLineSearchCreate(((PetscObject)tao)->comm,&tao->linesearch);CHKERRQ(ierr);
-  ierr = PetscObjectIncrementTabLevel((PetscObject)tao->linesearch, (PetscObject)tao, 1);CHKERRQ(ierr);
+  ierr = PetscObjectIncrementTabLevel((PetscObject)tao->linesearch,(PetscObject)tao,1);CHKERRQ(ierr);
   ierr = TaoLineSearchSetType(tao->linesearch,morethuente_type);CHKERRQ(ierr);
   ierr = TaoLineSearchUseTaoRoutines(tao->linesearch,tao);CHKERRQ(ierr);
   ierr = TaoLineSearchSetOptionsPrefix(tao->linesearch,tao->hdr.prefix);CHKERRQ(ierr);
 
   /*  Set linear solver to default for symmetric matrices */
   ierr = KSPCreate(((PetscObject)tao)->comm,&tao->ksp);CHKERRQ(ierr);
-  ierr = PetscObjectIncrementTabLevel((PetscObject)tao->ksp, (PetscObject)tao, 1);CHKERRQ(ierr);
+  ierr = PetscObjectIncrementTabLevel((PetscObject)tao->ksp,(PetscObject)tao,1);CHKERRQ(ierr);
   ierr = KSPSetOptionsPrefix(tao->ksp,tao->hdr.prefix);CHKERRQ(ierr);
-  ierr = KSPSetType(tao->ksp,KSPCGSTCG);CHKERRQ(ierr);
+  ierr = KSPAppendOptionsPrefix(tao->ksp,"tao_nls_");CHKERRQ(ierr);
+  ierr = KSPSetType(tao->ksp,KSPSTCG);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }

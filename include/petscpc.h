@@ -1,9 +1,10 @@
 /*
       Preconditioner module.
 */
-#if !defined(__PETSCPC_H)
-#define __PETSCPC_H
+#if !defined(PETSCPC_H)
+#define PETSCPC_H
 #include <petscmat.h>
+#include <petscdmtypes.h>
 #include <petscpctypes.h>
 
 PETSC_EXTERN PetscErrorCode PCInitializePackage(void);
@@ -17,11 +18,29 @@ PETSC_EXTERN PetscFunctionList PCList;
 /* Logging support */
 PETSC_EXTERN PetscClassId PC_CLASSID;
 
+/* Arrays of names for options in implementation PCs */
+PETSC_EXTERN const char *const *const PCSides;
+PETSC_EXTERN const char *const PCJacobiTypes[];
+PETSC_EXTERN const char *const PCASMTypes[];
+PETSC_EXTERN const char *const PCGASMTypes[];
+PETSC_EXTERN const char *const PCCompositeTypes[];
+PETSC_EXTERN const char *const PCFieldSplitSchurPreTypes[];
+PETSC_EXTERN const char *const PCFieldSplitSchurFactTypes[];
+PETSC_EXTERN const char *const PCPARMSGlobalTypes[];
+PETSC_EXTERN const char *const PCPARMSLocalTypes[];
+PETSC_EXTERN const char *const PCMGTypes[];
+PETSC_EXTERN const char *const PCMGCycleTypes[];
+PETSC_EXTERN const char *const PCMGGalerkinTypes[];
+PETSC_EXTERN const char *const PCExoticTypes[];
+PETSC_EXTERN const char *const PCPatchConstructTypes[];
+PETSC_EXTERN const char *const PCFailedReasons[];
+
 PETSC_EXTERN PetscErrorCode PCCreate(MPI_Comm,PC*);
 PETSC_EXTERN PetscErrorCode PCSetType(PC,PCType);
 PETSC_EXTERN PetscErrorCode PCGetType(PC,PCType*);
 PETSC_EXTERN PetscErrorCode PCSetUp(PC);
-PETSC_EXTERN PetscErrorCode PCGetSetUpFailedReason(PC,PCFailedReason*);
+PETSC_EXTERN PetscErrorCode PCGetFailedReason(PC,PCFailedReason*);
+PETSC_DEPRECATED_FUNCTION("Use PCGetFailedReason() (since version 3.11)") PETSC_STATIC_INLINE PetscErrorCode PCGetSetUpFailedReason(PC pc,PCFailedReason *reason) {return PCGetFailedReason(pc,reason);}
 PETSC_EXTERN PetscErrorCode PCSetUpOnBlocks(PC);
 PETSC_EXTERN PetscErrorCode PCApply(PC,Vec,Vec);
 PETSC_EXTERN PetscErrorCode PCApplySymmetricLeft(PC,Vec,Vec);
@@ -64,7 +83,8 @@ PETSC_EXTERN PetscErrorCode PCSetOptionsPrefix(PC,const char[]);
 PETSC_EXTERN PetscErrorCode PCAppendOptionsPrefix(PC,const char[]);
 PETSC_EXTERN PetscErrorCode PCGetOptionsPrefix(PC,const char*[]);
 
-PETSC_EXTERN PetscErrorCode PCComputeExplicitOperator(PC,Mat*);
+PETSC_EXTERN PetscErrorCode PCComputeOperator(PC,MatType,Mat*);
+PETSC_DEPRECATED_FUNCTION("Use PCComputeOperator() (since version 3.12)") PETSC_STATIC_INLINE PetscErrorCode PCComputeExplicitOperator(PC A,Mat* B) { return PCComputeOperator(A,NULL,B); }
 
 /*
       These are used to provide extra scaling of preconditioned
@@ -77,6 +97,9 @@ PETSC_EXTERN PetscErrorCode PCSetDiagonalScale(PC,Vec);
 
 PETSC_EXTERN PetscErrorCode PCSetDM(PC,DM);
 PETSC_EXTERN PetscErrorCode PCGetDM(PC,DM*);
+
+PETSC_EXTERN PetscErrorCode PCGetInterpolations(PC,PetscInt*,Mat*[]);
+PETSC_EXTERN PetscErrorCode PCGetCoarseOperators(PC pc,PetscInt*,Mat*[]);
 
 PETSC_EXTERN PetscErrorCode PCSetCoordinates(PC,PetscInt,PetscInt,PetscReal*);
 
@@ -128,12 +151,9 @@ PETSC_EXTERN PetscErrorCode PCFactorSetShiftAmount(PC,PetscReal);
 PETSC_EXTERN PetscErrorCode PCFactorSetMatSolverType(PC,MatSolverType);
 PETSC_EXTERN PetscErrorCode PCFactorGetMatSolverType(PC,MatSolverType*);
 PETSC_EXTERN PetscErrorCode PCFactorSetUpMatSolverType(PC);
-PETSC_DEPRECATED("Use PCFactorSetMatSolverType") PETSC_STATIC_INLINE PetscErrorCode PCFactorSetMatSolverPackage(PC pc,MatSolverType stype)
-{ return PCFactorSetMatSolverType(pc,stype); }
-PETSC_DEPRECATED("Use PCFactorGetMatSolverType") PETSC_STATIC_INLINE PetscErrorCode PCFactorGetMatSolverPackage(PC pc,MatSolverType *stype)
-{ return PCFactorGetMatSolverType(pc,stype); }
-PETSC_DEPRECATED("Use PCFactorSetUpMatSolverType") PETSC_STATIC_INLINE PetscErrorCode PCFactorSetUpMatSolverPackage(PC pc)
-{ return PCFactorSetUpMatSolverType(pc); }
+PETSC_DEPRECATED_FUNCTION("Use PCFactorSetMatSolverType() (since version 3.9)") PETSC_STATIC_INLINE PetscErrorCode PCFactorSetMatSolverPackage(PC pc,MatSolverType stype) {return PCFactorSetMatSolverType(pc,stype);}
+PETSC_DEPRECATED_FUNCTION("Use PCFactorGetMatSolverType() (since version 3.9)") PETSC_STATIC_INLINE PetscErrorCode PCFactorGetMatSolverPackage(PC pc,MatSolverType *stype) {return PCFactorGetMatSolverType(pc,stype);}
+PETSC_DEPRECATED_FUNCTION("Use PCFactorSetUpMatSolverType() (since version 3.9)") PETSC_STATIC_INLINE PetscErrorCode PCFactorSetUpMatSolverPackage(PC pc) {return PCFactorSetUpMatSolverType(pc);}
 
 PETSC_EXTERN PetscErrorCode PCFactorSetFill(PC,PetscReal);
 PETSC_EXTERN PetscErrorCode PCFactorSetColumnPivot(PC,PetscReal);
@@ -223,6 +243,7 @@ PETSC_EXTERN PetscErrorCode PCFieldSplitGetType(PC,PCCompositeType*);
 PETSC_EXTERN PetscErrorCode PCFieldSplitSetBlockSize(PC,PetscInt);
 PETSC_EXTERN PetscErrorCode PCFieldSplitSetIS(PC,const char[],IS);
 PETSC_EXTERN PetscErrorCode PCFieldSplitGetIS(PC,const char[],IS*);
+PETSC_EXTERN PetscErrorCode PCFieldSplitGetISByIndex(PC,PetscInt,IS*);
 PETSC_EXTERN PetscErrorCode PCFieldSplitRestrictIS(PC,IS);
 PETSC_EXTERN PetscErrorCode PCFieldSplitSetDMSplits(PC,PetscBool);
 PETSC_EXTERN PetscErrorCode PCFieldSplitGetDMSplits(PC,PetscBool*);
@@ -231,7 +252,7 @@ PETSC_EXTERN PetscErrorCode PCFieldSplitGetDiagUseAmat(PC,PetscBool*);
 PETSC_EXTERN PetscErrorCode PCFieldSplitSetOffDiagUseAmat(PC,PetscBool);
 PETSC_EXTERN PetscErrorCode PCFieldSplitGetOffDiagUseAmat(PC,PetscBool*);
 
-PETSC_EXTERN PETSC_DEPRECATED("Use PCFieldSplitSetSchurPre") PetscErrorCode PCFieldSplitSchurPrecondition(PC,PCFieldSplitSchurPreType,Mat);
+PETSC_EXTERN PETSC_DEPRECATED_FUNCTION("Use PCFieldSplitSetSchurPre() (since version 3.5)") PetscErrorCode PCFieldSplitSchurPrecondition(PC,PCFieldSplitSchurPreType,Mat);
 PETSC_EXTERN PetscErrorCode PCFieldSplitSetSchurPre(PC,PCFieldSplitSchurPreType,Mat);
 PETSC_EXTERN PetscErrorCode PCFieldSplitGetSchurPre(PC,PCFieldSplitSchurPreType*,Mat*);
 PETSC_EXTERN PetscErrorCode PCFieldSplitSetSchurFactType(PC,PCFieldSplitSchurFactType);
@@ -241,6 +262,10 @@ PETSC_EXTERN PetscErrorCode PCFieldSplitSchurGetS(PC,Mat *S);
 PETSC_EXTERN PetscErrorCode PCFieldSplitSchurRestoreS(PC,Mat *S);
 PETSC_EXTERN PetscErrorCode PCFieldSplitGetDetectSaddlePoint(PC,PetscBool*);
 PETSC_EXTERN PetscErrorCode PCFieldSplitSetDetectSaddlePoint(PC,PetscBool);
+PETSC_EXTERN PetscErrorCode PCFieldSplitSetGKBTol(PC,PetscReal);
+PETSC_EXTERN PetscErrorCode PCFieldSplitSetGKBNu(PC,PetscReal);
+PETSC_EXTERN PetscErrorCode PCFieldSplitSetGKBMaxit(PC,PetscInt);
+PETSC_EXTERN PetscErrorCode PCFieldSplitSetGKBDelay(PC,PetscInt);
 
 PETSC_EXTERN PetscErrorCode PCGalerkinSetRestriction(PC,Mat);
 PETSC_EXTERN PetscErrorCode PCGalerkinSetInterpolation(PC,Mat);
@@ -326,7 +351,7 @@ PETSC_EXTERN PetscErrorCode PCMGSetDistinctSmoothUp(PC);
 PETSC_EXTERN PetscErrorCode PCMGSetNumberSmooth(PC,PetscInt);
 PETSC_EXTERN PetscErrorCode PCMGSetCycleType(PC,PCMGCycleType);
 PETSC_EXTERN PetscErrorCode PCMGSetCycleTypeOnLevel(PC,PetscInt,PCMGCycleType);
-PETSC_DEPRECATED("Use PCMGSetCycleTypeOnLevel") PETSC_STATIC_INLINE PetscErrorCode PCMGSetCyclesOnLevel(PC pc,PetscInt l,PetscInt t) {return PCMGSetCycleTypeOnLevel(pc,l,(PCMGCycleType)t);}
+PETSC_DEPRECATED_FUNCTION("Use PCMGSetCycleTypeOnLevel() (since version 3.5)") PETSC_STATIC_INLINE PetscErrorCode PCMGSetCyclesOnLevel(PC pc,PetscInt l,PetscInt t) {return PCMGSetCycleTypeOnLevel(pc,l,(PCMGCycleType)t);}
 PETSC_EXTERN PetscErrorCode PCMGMultiplicativeSetCycles(PC,PetscInt);
 PETSC_EXTERN PetscErrorCode PCMGSetGalerkin(PC,PCMGGalerkinType);
 PETSC_EXTERN PetscErrorCode PCMGGetGalerkin(PC,PCMGGalerkinType*);
@@ -340,11 +365,17 @@ PETSC_EXTERN PetscErrorCode PCMGGetRestriction(PC,PetscInt,Mat*);
 PETSC_EXTERN PetscErrorCode PCMGSetInjection(PC,PetscInt,Mat);
 PETSC_EXTERN PetscErrorCode PCMGGetInjection(PC,PetscInt,Mat*);
 PETSC_EXTERN PetscErrorCode PCMGSetInterpolation(PC,PetscInt,Mat);
+PETSC_EXTERN PetscErrorCode PCMGSetOperators(PC,PetscInt,Mat,Mat);
 PETSC_EXTERN PetscErrorCode PCMGGetInterpolation(PC,PetscInt,Mat*);
 PETSC_EXTERN PetscErrorCode PCMGSetRScale(PC,PetscInt,Vec);
 PETSC_EXTERN PetscErrorCode PCMGGetRScale(PC,PetscInt,Vec*);
 PETSC_EXTERN PetscErrorCode PCMGSetResidual(PC,PetscInt,PetscErrorCode (*)(Mat,Vec,Vec,Vec),Mat);
 PETSC_EXTERN PetscErrorCode PCMGResidualDefault(Mat,Vec,Vec,Vec);
+
+
+PETSC_EXTERN PetscErrorCode PCHMGSetReuseInterpolation(PC,PetscBool);
+PETSC_EXTERN PetscErrorCode PCHMGSetUseSubspaceCoarsening(PC,PetscBool);
+PETSC_EXTERN PetscErrorCode PCHMGSetInnerPCType(PC,PCType);
 
 PETSC_EXTERN PetscErrorCode PCTelescopeGetSubcommType(PC,PetscSubcommType*);
 PETSC_EXTERN PetscErrorCode PCTelescopeSetSubcommType(PC,PetscSubcommType);
@@ -352,12 +383,16 @@ PETSC_EXTERN PetscErrorCode PCTelescopeGetReductionFactor(PC,PetscInt*);
 PETSC_EXTERN PetscErrorCode PCTelescopeSetReductionFactor(PC,PetscInt);
 PETSC_EXTERN PetscErrorCode PCTelescopeGetIgnoreDM(PC,PetscBool*);
 PETSC_EXTERN PetscErrorCode PCTelescopeSetIgnoreDM(PC,PetscBool);
+PETSC_EXTERN PetscErrorCode PCTelescopeGetUseCoarseDM(PC,PetscBool*);
+PETSC_EXTERN PetscErrorCode PCTelescopeSetUseCoarseDM(PC,PetscBool);
 PETSC_EXTERN PetscErrorCode PCTelescopeGetIgnoreKSPComputeOperators(PC,PetscBool*);
 PETSC_EXTERN PetscErrorCode PCTelescopeSetIgnoreKSPComputeOperators(PC,PetscBool);
 PETSC_EXTERN PetscErrorCode PCTelescopeGetDM(PC,DM*);
 
 PETSC_EXTERN PetscErrorCode PCPatchSetSaveOperators(PC, PetscBool);
 PETSC_EXTERN PetscErrorCode PCPatchGetSaveOperators(PC, PetscBool *);
+PETSC_EXTERN PetscErrorCode PCPatchSetPrecomputeElementTensors(PC, PetscBool);
+PETSC_EXTERN PetscErrorCode PCPatchGetPrecomputeElementTensors(PC, PetscBool *);
 PETSC_EXTERN PetscErrorCode PCPatchSetPartitionOfUnity(PC, PetscBool);
 PETSC_EXTERN PetscErrorCode PCPatchGetPartitionOfUnity(PC, PetscBool *);
 PETSC_EXTERN PetscErrorCode PCPatchSetMultiplicative(PC, PetscBool);
@@ -369,11 +404,16 @@ PETSC_EXTERN PetscErrorCode PCPatchGetCellNumbering(PC, PetscSection *);
 PETSC_EXTERN PetscErrorCode PCPatchSetConstructType(PC, PCPatchConstructType,   PetscErrorCode (*)(PC, PetscInt *, IS **, IS *, void *), void *);
 PETSC_EXTERN PetscErrorCode PCPatchGetConstructType(PC, PCPatchConstructType *, PetscErrorCode (**)(PC, PetscInt *, IS **, IS *, void *), void **);
 PETSC_EXTERN PetscErrorCode PCPatchSetDiscretisationInfo(PC, PetscInt, DM *, PetscInt *, PetscInt *, const PetscInt **, const PetscInt *, PetscInt, const PetscInt *, PetscInt, const PetscInt *);
-PETSC_EXTERN PetscErrorCode PCPatchSetComputeOperator(PC, PetscErrorCode (*)(PC,PetscInt,Mat,IS,PetscInt,const PetscInt *,void *), void *);
+PETSC_EXTERN PetscErrorCode PCPatchSetComputeOperator(PC, PetscErrorCode (*)(PC,PetscInt,Vec,Mat,IS,PetscInt,const PetscInt *,const PetscInt *, void *), void *);
+PETSC_EXTERN PetscErrorCode PCPatchSetComputeFunction(PC pc, PetscErrorCode (*func)(PC, PetscInt, Vec, Vec, IS, PetscInt, const PetscInt *, const PetscInt *, void *), void *ctx);
+PETSC_EXTERN PetscErrorCode PCPatchSetComputeOperatorInteriorFacets(PC, PetscErrorCode (*)(PC,PetscInt,Vec,Mat,IS,PetscInt,const PetscInt *,const PetscInt *, void *), void *);
+PETSC_EXTERN PetscErrorCode PCPatchSetComputeFunctionInteriorFacets(PC pc, PetscErrorCode (*func)(PC, PetscInt, Vec, Vec, IS, PetscInt, const PetscInt *, const PetscInt *, void *), void *ctx);
 
 PETSC_EXTERN PetscErrorCode PCLMVMSetMatLMVM(PC, Mat);
 PETSC_EXTERN PetscErrorCode PCLMVMGetMatLMVM(PC, Mat*);
 PETSC_EXTERN PetscErrorCode PCLMVMSetIS(PC, IS);
 PETSC_EXTERN PetscErrorCode PCLMVMClearIS(PC);
 
-#endif /* __PETSCPC_H */
+PETSC_EXTERN PetscErrorCode PCExoticSetType(PC,PCExoticType);
+
+#endif /* PETSCPC_H */

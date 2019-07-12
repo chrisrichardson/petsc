@@ -55,13 +55,13 @@ static PetscErrorCode TaoSolve_NTL(Tao tao)
 
   PetscFunctionBegin;
   if (tao->XL || tao->XU || tao->ops->computebounds) {
-    ierr = PetscPrintf(((PetscObject)tao)->comm,"WARNING: Variable bounds have been set but will be ignored by ntl algorithm\n");CHKERRQ(ierr);
+    ierr = PetscInfo(tao,"WARNING: Variable bounds have been set but will be ignored by ntl algorithm\n");CHKERRQ(ierr);
   }
 
   ierr = KSPGetType(tao->ksp,&ksp_type);CHKERRQ(ierr);
-  ierr = PetscStrcmp(ksp_type,KSPCGNASH,&is_nash);CHKERRQ(ierr);
-  ierr = PetscStrcmp(ksp_type,KSPCGSTCG,&is_stcg);CHKERRQ(ierr);
-  ierr = PetscStrcmp(ksp_type,KSPCGGLTR,&is_gltr);CHKERRQ(ierr);
+  ierr = PetscStrcmp(ksp_type,KSPNASH,&is_nash);CHKERRQ(ierr);
+  ierr = PetscStrcmp(ksp_type,KSPSTCG,&is_stcg);CHKERRQ(ierr);
+  ierr = PetscStrcmp(ksp_type,KSPGLTR,&is_gltr);CHKERRQ(ierr);
   if (!is_nash && !is_stcg && !is_gltr) {
     SETERRQ(PETSC_COMM_SELF,1,"TAO_NTR requires nash, stcg, or gltr for the KSP");
   }
@@ -232,7 +232,7 @@ static PetscErrorCode TaoSolve_NTL(Tao tao)
   while (tao->reason == TAO_CONTINUE_ITERATING) {
     /* Call general purpose update function */
     if (tao->ops->update) {
-      ierr = (*tao->ops->update)(tao, tao->niter);CHKERRQ(ierr);
+      ierr = (*tao->ops->update)(tao, tao->niter, tao->user_update);CHKERRQ(ierr);
     }
     ++tao->niter;
     tao->ksp_its=0;
@@ -718,17 +718,14 @@ static PetscErrorCode TaoView_NTL(Tao tao, PetscViewer viewer)
 
 /* ---------------------------------------------------------- */
 /*MC
-  TAONTR - Newton's method with trust region and linesearch
-  for unconstrained minimization.
+  TAONTL - Newton's method with trust region globalization and line search fallback.
   At each iteration, the Newton trust region method solves the system for d
   and performs a line search in the d direction:
 
             min_d  .5 dT Hk d + gkT d,  s.t.   ||d|| < Delta_k
 
   Options Database Keys:
-+ -tao_ntl_pc_type - "none","ahess","bfgs","petsc"
-. -tao_ntl_bfgs_scale_type - type of scaling with bfgs pc, "ahess" or "bfgs"
-. -tao_ntl_init_type - "constant","direction","interpolation"
++ -tao_ntl_init_type - "constant","direction","interpolation"
 . -tao_ntl_update_type - "reduction","interpolation"
 . -tao_ntl_min_radius - lower bound on trust region radius
 . -tao_ntl_max_radius - upper bound on trust region radius
@@ -759,7 +756,6 @@ static PetscErrorCode TaoView_NTL(Tao tao, PetscViewer viewer)
 
   Level: beginner
 M*/
-
 PETSC_EXTERN PetscErrorCode TaoCreate_NTL(Tao tao)
 {
   TAO_NTL        *tl;
@@ -835,13 +831,14 @@ PETSC_EXTERN PetscErrorCode TaoCreate_NTL(Tao tao)
   tl->update_type     = NTL_UPDATE_REDUCTION;
 
   ierr = TaoLineSearchCreate(((PetscObject)tao)->comm, &tao->linesearch);CHKERRQ(ierr);
-  ierr = PetscObjectIncrementTabLevel((PetscObject)tao->linesearch, (PetscObject)tao, 1);CHKERRQ(ierr);
+  ierr = PetscObjectIncrementTabLevel((PetscObject)tao->linesearch,(PetscObject)tao,1);CHKERRQ(ierr);
   ierr = TaoLineSearchSetType(tao->linesearch, morethuente_type);CHKERRQ(ierr);
   ierr = TaoLineSearchUseTaoRoutines(tao->linesearch, tao);CHKERRQ(ierr);
   ierr = TaoLineSearchSetOptionsPrefix(tao->linesearch,tao->hdr.prefix);CHKERRQ(ierr);
   ierr = KSPCreate(((PetscObject)tao)->comm,&tao->ksp);CHKERRQ(ierr);
-  ierr = PetscObjectIncrementTabLevel((PetscObject)tao->ksp, (PetscObject)tao, 1);CHKERRQ(ierr);
+  ierr = PetscObjectIncrementTabLevel((PetscObject)tao->ksp,(PetscObject)tao,1);CHKERRQ(ierr);
   ierr = KSPSetOptionsPrefix(tao->ksp,tao->hdr.prefix);CHKERRQ(ierr);
-  ierr = KSPSetType(tao->ksp,KSPCGSTCG);CHKERRQ(ierr);
+  ierr = KSPAppendOptionsPrefix(tao->ksp,"tao_ntl_");CHKERRQ(ierr);
+  ierr = KSPSetType(tao->ksp,KSPSTCG);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }

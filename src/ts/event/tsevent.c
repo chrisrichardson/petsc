@@ -52,6 +52,37 @@ PetscErrorCode TSEventDestroy(TSEvent *event)
 }
 
 /*@
+  TSSetPostEventIntervalStep - Set the time-step used immediately following the event interval
+
+  Logically Collective
+
+  Input Arguments:
++ ts - time integration context
+- dt - post event interval step
+
+  Options Database Keys:
+. -ts_event_post_eventinterval_step <dt> time-step after event interval
+
+  Notes:
+  TSSetPostEventIntervalStep allows one to set a time-step that is used immediately following an event interval. 
+  
+  This function should be called from the postevent function set with TSSetEventHandler().
+
+  The post event interval time-step should be selected based on the dynamics following the event. 
+  If the dynamics are stiff, a conservative (small) step should be used. 
+  If not, then a larger time-step can be used.
+  
+  Level: Advanced
+  .seealso: TS, TSEvent, TSSetEventHandler()
+@*/
+PetscErrorCode TSSetPostEventIntervalStep(TS ts,PetscReal dt)
+{
+  PetscFunctionBegin;
+  ts->event->timestep_posteventinterval = dt;
+  PetscFunctionReturn(0);
+}
+
+/*@
    TSSetEventTolerances - Set tolerances for event zero crossings when using event handler
 
    Logically Collective
@@ -95,7 +126,7 @@ PetscErrorCode TSSetEventTolerances(TS ts,PetscReal tol,PetscReal vtol[])
 }
 
 /*@C
-   TSSetEventHandler - Sets a monitoring function used for detecting events
+   TSSetEventHandler - Sets a function used for detecting events
 
    Logically Collective on TS
 
@@ -138,8 +169,6 @@ PetscErrorCode TSSetEventTolerances(TS ts,PetscReal tol,PetscReal vtol[])
 
    Level: intermediate
 
-.keywords: TS, event, set
-
 .seealso: TSCreate(), TSSetTimeStep(), TSSetConvergedReason()
 @*/
 PetscErrorCode TSSetEventHandler(TS ts,PetscInt nevents,PetscInt direction[],PetscBool terminate[],PetscErrorCode (*eventhandler)(TS,PetscReal,Vec,PetscScalar[],void*),PetscErrorCode (*postevent)(TS,PetscInt,PetscInt[],PetscReal,Vec,PetscBool,void*),void *ctx)
@@ -181,6 +210,7 @@ PetscErrorCode TSSetEventHandler(TS ts,PetscInt nevents,PetscInt direction[],Pet
   event->eventhandler = eventhandler;
   event->postevent = postevent;
   event->ctx = ctx;
+  event->timestep_posteventinterval = ts->time_step;
 
   event->recsize = 8;  /* Initial size of the recorder */
   ierr = PetscOptionsBegin(((PetscObject)ts)->comm,((PetscObject)ts)->prefix,"TS Event options","TS");CHKERRQ(ierr);
@@ -188,8 +218,9 @@ PetscErrorCode TSSetEventHandler(TS ts,PetscInt nevents,PetscInt direction[],Pet
     ierr = PetscOptionsReal("-ts_event_tol","Scalar event tolerance for zero crossing check","TSSetEventTolerances",tol,&tol,NULL);CHKERRQ(ierr);
     ierr = PetscOptionsName("-ts_event_monitor","Print choices made by event handler","",&flg);CHKERRQ(ierr);
     ierr = PetscOptionsInt("-ts_event_recorder_initial_size","Initial size of event recorder","",event->recsize,&event->recsize,NULL);CHKERRQ(ierr);
+    ierr = PetscOptionsReal("-ts_event_post_eventinterval_step","Time step after event interval","",event->timestep_posteventinterval,&event->timestep_posteventinterval,NULL);CHKERRQ(ierr);
   }
-  PetscOptionsEnd();
+  ierr = PetscOptionsEnd();CHKERRQ(ierr);
 
   ierr = PetscMalloc1(event->recsize,&event->recorder.time);CHKERRQ(ierr);
   ierr = PetscMalloc1(event->recsize,&event->recorder.stepnum);CHKERRQ(ierr);
@@ -235,11 +266,11 @@ static PetscErrorCode TSEventRecorderResize(TSEvent event)
   }
 
   /* Copy over data */
-  ierr = PetscMemcpy(time,event->recorder.time,event->recsize*sizeof(PetscReal));CHKERRQ(ierr);
-  ierr = PetscMemcpy(stepnum,event->recorder.stepnum,event->recsize*sizeof(PetscInt));CHKERRQ(ierr);
-  ierr = PetscMemcpy(nevents,event->recorder.nevents,event->recsize*sizeof(PetscInt));CHKERRQ(ierr);
+  ierr = PetscArraycpy(time,event->recorder.time,event->recsize);CHKERRQ(ierr);
+  ierr = PetscArraycpy(stepnum,event->recorder.stepnum,event->recsize);CHKERRQ(ierr);
+  ierr = PetscArraycpy(nevents,event->recorder.nevents,event->recsize);CHKERRQ(ierr);
   for (i=0; i < event->recsize; i++) {
-    ierr = PetscMemcpy(eventidx[i],event->recorder.eventidx[i],event->recorder.nevents[i]*sizeof(PetscInt));CHKERRQ(ierr);
+    ierr = PetscArraycpy(eventidx[i],event->recorder.eventidx[i],event->recorder.nevents[i]);CHKERRQ(ierr);
   }
 
   /* Destroy old arrays */
@@ -264,7 +295,7 @@ static PetscErrorCode TSEventRecorderResize(TSEvent event)
 }
 
 /*
-   Helper rutine to handle user postenvents and recording
+   Helper routine to handle user postevents and recording
 */
 static PetscErrorCode TSPostEvent(TS ts,PetscReal t,Vec U)
 {
@@ -296,9 +327,9 @@ static PetscErrorCode TSPostEvent(TS ts,PetscReal t,Vec U)
 
   /* Reset event residual functions as states might get changed by the postevent callback */
   if (event->postevent) {
-    ierr = VecLockPush(U);CHKERRQ(ierr);
+    ierr = VecLockReadPush(U);CHKERRQ(ierr);
     ierr = (*event->eventhandler)(ts,t,U,event->fvalue,event->ctx);CHKERRQ(ierr);
-    ierr = VecLockPop(U);CHKERRQ(ierr);
+    ierr = VecLockReadPop(U);CHKERRQ(ierr);
   }
 
   /* Cache current time and event residual functions */
@@ -362,14 +393,11 @@ PetscErrorCode TSEventHandler(TS ts)
   ierr = TSGetSolution(ts,&U);CHKERRQ(ierr);
 
   if (event->status == TSEVENT_NONE) {
-    if (ts->steps == 1) /* After first successful step */
-      event->timestep_orig = ts->ptime - ts->ptime_prev;
     event->timestep_prev = dt;
   }
 
   if (event->status == TSEVENT_RESET_NEXTSTEP) {
-    /* Restore time step */
-    dt = PetscMin(event->timestep_orig,event->timestep_prev);
+    dt = event->timestep_posteventinterval;
     ierr = TSSetTimeStep(ts,dt);CHKERRQ(ierr);
     event->status = TSEVENT_NONE;
   }
@@ -378,9 +406,9 @@ PetscErrorCode TSEventHandler(TS ts)
     event->ptime_end = t;
   }
 
-  ierr = VecLockPush(U);CHKERRQ(ierr);
+  ierr = VecLockReadPush(U);CHKERRQ(ierr);
   ierr = (*event->eventhandler)(ts,t,U,event->fvalue,event->ctx);CHKERRQ(ierr);
-  ierr = VecLockPop(U);CHKERRQ(ierr);
+  ierr = VecLockReadPop(U);CHKERRQ(ierr);
 
   for (i=0; i < event->nevents; i++) {
     if (PetscAbsScalar(event->fvalue[i]) < event->vtol[i]) {
@@ -466,7 +494,10 @@ PetscErrorCode TSEventHandler(TS ts)
     ierr = TSPostEvent(ts,t,U);CHKERRQ(ierr);
 
     dt = event->ptime_end - t;
-    if (PetscAbsReal(dt) < PETSC_SMALL) dt += PetscMin(event->timestep_orig,event->timestep_prev); /* XXX Should be done better */
+    if (PetscAbsReal(dt) < PETSC_SMALL) { /* we hit the event, continue with the candidate time step */
+      dt = event->timestep_prev;
+      event->status = TSEVENT_NONE;
+    }
     ierr = TSSetTimeStep(ts,dt);CHKERRQ(ierr);
     event->iterctr = 0;
     PetscFunctionReturn(0);

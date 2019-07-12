@@ -2,10 +2,6 @@
 static char help[] = "Scatters from a sequential vector to a parallel vector.\n\
 This does the tricky case.\n\n";
 
-/*T
-   requires: x
-T*/
-
 #include <petscvec.h>
 
 int main(int argc,char **argv)
@@ -37,7 +33,7 @@ int main(int argc,char **argv)
   ierr  = VecSet(x,value);CHKERRQ(ierr);
   ierr  = VecSet(y,zero);CHKERRQ(ierr);
 
-  ierr = VecScatterCreateWithData(x,is1,y,is2,&ctx);CHKERRQ(ierr);
+  ierr = VecScatterCreate(x,is1,y,is2,&ctx);CHKERRQ(ierr);
   ierr = VecScatterBegin(ctx,x,y,ADD_VALUES,SCATTER_FORWARD);CHKERRQ(ierr);
   ierr = VecScatterEnd(ctx,x,y,ADD_VALUES,SCATTER_FORWARD);CHKERRQ(ierr);
   ierr = VecScatterDestroy(&ctx);CHKERRQ(ierr);

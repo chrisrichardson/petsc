@@ -20,8 +20,6 @@ PetscClassId MAT_NULLSPACE_CLASSID;
 
    Level: advanced
 
-.keywords: PC, null space, create
-
 .seealso: MatNullSpaceDestroy(), MatNullSpaceRemove(), MatSetNullSpace(), MatNullSpace, MatNullSpaceCreate()
 @*/
 PetscErrorCode  MatNullSpaceSetFunction(MatNullSpace sp, PetscErrorCode (*rem)(MatNullSpace,Vec,void*),void *ctx)
@@ -78,11 +76,11 @@ PetscErrorCode MatNullSpaceGetVecs(MatNullSpace sp,PetscBool *has_const,PetscInt
    Level: advanced
 
    Notes:
-    If you are solving an elasticity problems you should likely use this, in conjunction with ee MatSetNearNullspace(), to provide information that 
-           the PCGAMG preconditioner can use to construct a much more efficient preconditioner.
+     If you are solving an elasticity problem you should likely use this, in conjunction with MatSetNearNullspace(), to provide information that 
+     the PCGAMG preconditioner can use to construct a much more efficient preconditioner.
 
-           If you are solving an elasticity problem with pure Neumann boundary conditions you can use this in conjunction with MatSetNullspace() to
-           provide this information to the linear solver so it can handle the null space appropriately in the linear solution.
+     If you are solving an elasticity problem with pure Neumann boundary conditions you can use this in conjunction with MatSetNullspace() to
+     provide this information to the linear solver so it can handle the null space appropriately in the linear solution.
 
 
 .seealso: MatNullSpaceCreate(), MatSetNearNullspace(), MatSetNullspace()
@@ -215,7 +213,7 @@ PetscErrorCode MatNullSpaceView(MatNullSpace sp,PetscViewer viewer)
    MatNullSpaceCreate - Creates a data structure used to project vectors
    out of null spaces.
 
-   Collective on MPI_Comm
+   Collective
 
    Input Parameters:
 +  comm - the MPI communicator associated with the object
@@ -240,8 +238,6 @@ PetscErrorCode MatNullSpaceView(MatNullSpace sp,PetscViewer viewer)
   Users manual sections:
 .   sec_singular
 
-.keywords: PC, null space, create
-
 .seealso: MatNullSpaceDestroy(), MatNullSpaceRemove(), MatSetNullSpace(), MatNullSpace, MatNullSpaceSetFunction()
 @*/
 PetscErrorCode  MatNullSpaceCreate(MPI_Comm comm,PetscBool has_cnst,PetscInt n,const Vec vecs[],MatNullSpace *SP)
@@ -258,7 +254,7 @@ PetscErrorCode  MatNullSpaceCreate(MPI_Comm comm,PetscBool has_cnst,PetscInt n,c
   if (n) {
     for (i=0; i<n; i++) {
       /* prevent the user from changes values in the vector */
-      ierr = VecLockPush(vecs[i]);CHKERRQ(ierr);
+      ierr = VecLockReadPush(vecs[i]);CHKERRQ(ierr);
     }
   }
 #if defined(PETSC_USE_DEBUG)
@@ -325,8 +321,6 @@ PetscErrorCode  MatNullSpaceCreate(MPI_Comm comm,PetscBool has_cnst,PetscInt n,c
 
    Level: advanced
 
-.keywords: PC, null space, destroy
-
 .seealso: MatNullSpaceCreate(), MatNullSpaceRemove(), MatNullSpaceSetFunction()
 @*/
 PetscErrorCode  MatNullSpaceDestroy(MatNullSpace *sp)
@@ -340,7 +334,7 @@ PetscErrorCode  MatNullSpaceDestroy(MatNullSpace *sp)
   if (--((PetscObject)(*sp))->refct > 0) {*sp = 0; PetscFunctionReturn(0);}
 
   for (i=0; i < (*sp)->n; i++) {
-    ierr = VecLockPop((*sp)->vecs[i]);CHKERRQ(ierr);
+    ierr = VecLockReadPop((*sp)->vecs[i]);CHKERRQ(ierr);
   }
 
   ierr = VecDestroyVecs((*sp)->n,&(*sp)->vecs);CHKERRQ(ierr);
@@ -359,8 +353,6 @@ PetscErrorCode  MatNullSpaceDestroy(MatNullSpace *sp)
 -  vec - the vector from which the null space is to be removed
 
    Level: advanced
-
-.keywords: PC, null space, remove
 
 .seealso: MatNullSpaceCreate(), MatNullSpaceDestroy(), MatNullSpaceSetFunction()
 @*/
@@ -410,8 +402,6 @@ PetscErrorCode  MatNullSpaceRemove(MatNullSpace sp,Vec vec)
 .  isNull - PETSC_TRUE if the nullspace is valid for this matrix
 
    Level: advanced
-
-.keywords: PC, null space, remove
 
 .seealso: MatNullSpaceCreate(), MatNullSpaceDestroy(), MatNullSpaceSetFunction()
 @*/

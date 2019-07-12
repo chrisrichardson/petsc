@@ -28,7 +28,14 @@ class Package(config.base.Configure):
     self.lib              = []
     self.dlib             = []   # all libraries in this package and all those it depends on
     self.directory        = None # path of the package installation point; for example /usr/local or /home/bsmith/mpich-2.0.1
-    self.version          = ''
+
+    self.version          = ''   # the version of the package that PETSc will build with the --download-package option
+    self.versionname      = ''   # string name that appears in package include file, for example HYPRE_RELEASE_VERSION
+    self.versioninclude   = ''   # include file that contains package version information; if not provided uses includes[0]
+    self.minversion       = ''   # minimum version of the package that is supported
+    self.maxversion       = ''   # maximum version of the package that is supported
+    self.foundversion     = ''   # version of the package actually found
+    self.version_tuple    = ''   # version of the package actually found (tuple)
 
     # These are specified for the package
     self.required               = 0    # 1 means the package is required
@@ -39,6 +46,7 @@ class Package(config.base.Configure):
     self.useddirectly           = 1    # 1 indicates used by PETSc directly, 0 indicates used by a package used by PETSc
     self.linkedbypetsc          = 1    # 1 indicates PETSc shared libraries (and PETSc executables) need to link against this library
     self.gitcommit              = None # Git commit to use for downloads
+    self.gitcommitmaster        = None # Git commit to use for petsc/master or similar non-release branches
     self.download               = []   # list of URLs where repository or tarballs may be found (git is tested before tarballs)
     self.deps                   = []   # other packages whose dlib or include we depend on, usually we also use self.framework.require()
     self.odeps                  = []   # dependent packages that are optional
@@ -59,17 +67,20 @@ class Package(config.base.Configure):
     self.license                = None # optional license text
     self.excludedDirs           = []   # list of directory names that could be false positives, SuperLU_DIST when looking for SuperLU
     self.downloadonWindows      = 0  # 1 means the --download-package works on Microsoft Windows
+    self.requirescxx14          = 0
     self.requirescxx11          = 0
     self.publicInstall          = 1  # Installs the package in the --prefix directory if it was given. Packages that are only used
                                      # during the configuration/installation process such as sowing, make etc should be marked as 0
     self.parallelMake           = 1  # 1 indicates the package supports make -j np option
 
     self.precisions             = ['__fp16','single','double','__float128']; # Floating point precision package works with
-    self.complex                = 1   # 0 means cannot use complex
-    self.requires32bitint       = 0;  # 1 means that the package will not work with 64 bit integers
+    self.complex                = 1  # 0 means cannot use complex
+    self.requires32bitint       = 0  # 1 means that the package will not work with 64 bit integers
+    self.requires32bitintblas   = 1  # 1 means that the package will not work with 64 bit integer BLAS/LAPACK
     self.skippackagewithoptions = 0  # packages like fblaslapack and MPICH do not support --with-package* options so do not print them in help
     self.alternativedownload    = [] # Used by, for example mpi.py to print useful error messages, which does not support --download-mpi but one can use --download-mpich
-    self.requirec99flag         = 0 # package must be compiled with C99 flags
+    self.requirec99flag         = 0  # package must be compiled with C99 flags
+    self.usesopenmp             = 'no'  # yes, no, unknow package is built to use OpenMP
 
     # Outside coupling
     self.defaultInstallDir      = os.path.abspath('externalpackages')
@@ -80,8 +91,11 @@ class Package(config.base.Configure):
     self.hastestsdatafiles      = 0 # indicates that PETSc make all tests has tests for this package that require DATAFILESPATH to be set
     self.makerulename           = '' # some packages do too many things with the make stage; this allows a package to limit to, for example, just building the libraries
     self.installedpetsc         = 0
-    self.installwithbatch       = 0  # install the package even though configure is running in the initial batch mode; f2blaslapack and fblaslapack for example
+    self.installwithbatch       = 1  # install the package even though configure in the batch mode; f2blaslapack and fblaslapack for example
     self.builtafterpetsc        = 0  # package is compiled/installed after PETSc is compiled
+
+    self.downloaded             = 0  # 1 indicates that this package is being downloaded during this run (internal use only)
+    self.executablename         = '' # full path of executable, for example cmake, bfort etc
     return
 
   def __str__(self):
@@ -89,9 +103,18 @@ class Package(config.base.Configure):
     output = ''
     if self.found:
       output = self.name+':\n'
-      if self.version: output += '  Version:  '+self.version+'\n'
+      if self.foundversion:
+        if hasattr(self,'versiontitle'):
+          output += '  '+self.versiontitle+':  '+self.foundversion+'\n'
+        else:
+          output += '  Version:  '+self.foundversion+'\n'
+      else:
+        if self.version: output += '  Version:  '+self.version+'\n'
       if self.include: output += '  Includes: '+self.headers.toStringNoDupes(self.include)+'\n'
       if self.lib:     output += '  Library:  '+self.libraries.toStringNoDupes(self.lib)+'\n'
+      if self.executablename: output += ' '+getattr(self,self.executablename)+'\n'
+      if self.usesopenmp == 'yes': output += '  uses OpenMP; use export OMP_NUM_THREADS=<p> or -omp_num_threads <p> To control the number of threads\n'
+      if self.usesopenmp == 'unknown': output += '  Unkown if this uses OpenMP (try export OMP_NUM_THREADS=<1-4> yourprogram -log_view) \n'
     return output
 
   def setupDependencies(self, framework):
@@ -132,7 +155,7 @@ class Package(config.base.Configure):
       help.addArgument(self.PACKAGE,'-with-'+self.package+'-lib=<libraries: e.g. [/Users/..../lib'+self.package+'.a,...]>',nargs.ArgLibrary(None,None,'Indicate the '+self.name+' libraries'))
     if self.download:
       help.addArgument(self.PACKAGE, '-download-'+self.package+'=<no,yes,filename,url>', nargs.ArgDownload(None, 0, 'Download and install '+self.name))
-      help.addArgument(self.PACKAGE, '-download-'+self.package+'-commit=commitid', nargs.ArgString(None, 0, 'The commit id from a git repository to use for the build'+self.name))
+      help.addArgument(self.PACKAGE, '-download-'+self.package+'-commit=commitid', nargs.ArgString(None, 0, 'The commit id from a git repository to use for the build of '+self.name))
       help.addDownload(self.package,self.download)
     return
 
@@ -211,6 +234,13 @@ class Package(config.base.Configure):
     for flag in ['-m32', '-m64', '-xarch=v9','-q64','-mmic']:
       if cflags.find(flag) >=0: return flag
     return ''
+
+  def getDebugFlags(self,cflags):
+    outflags = []
+    for flag in cflags.split():
+      if flag in ['-g','-g3','-Z7']:
+        outflags.append(flag)
+    return ' '.join(outflags)
 
   def getWindowsNonOptFlags(self,cflags):
     outflags = []
@@ -310,10 +340,10 @@ class Package(config.base.Configure):
   def getChecksum(self,source, chunkSize = 1024*1024):
     '''Return the md5 checksum for a given file, which may also be specified by its filename
        - The chunkSize argument specifies the size of blocks read from the file'''
-    if isinstance(source, file):
+    if hasattr(source, 'close'):
       f = source
     else:
-      f = file(source)
+      f = open(source, 'rb')
     m = new_md5()
     size = chunkSize
     buf  = f.read(size)
@@ -355,7 +385,7 @@ class Package(config.base.Configure):
   def generateGuesses(self):
     d = self.checkDownload()
     if d:
-      if not self.liblist or self.builtafterpetsc :
+      if not self.liblist or not self.liblist[0] or self.builtafterpetsc :
         yield('Download '+self.PACKAGE, d, [], self.getIncludeDirs(d, self.includedir))
       for libdir in [self.libdir, self.altlibdir]:
         libdirpath = os.path.join(d, libdir)
@@ -393,6 +423,9 @@ class Package(config.base.Configure):
                            fakeExternalPackagesDir+' is reserved for --download-package scratch space. \n'+
                            'Do not install software in this location nor use software in this directory.')
 
+      if not self.liblist or not self.liblist[0]:
+          yield('User specified root directory '+self.PACKAGE, d, [], self.getIncludeDirs(d, self.includedir))
+
       for libdir in [self.libdir, self.altlibdir]:
         libdirpath = os.path.join(d, libdir)
         if not os.path.isdir(libdirpath):
@@ -408,7 +441,7 @@ class Package(config.base.Configure):
       raise RuntimeError('--with-'+self.package+'-dir='+self.argDB['with-'+self.package+'-dir']+' did not work')
 
     if 'with-'+self.package+'-include' in self.argDB and not 'with-'+self.package+'-lib' in self.argDB:
-      if self.liblist[0]:
+      if self.liblist and self.liblist[0]:
         raise RuntimeError('If you provide --with-'+self.package+'-include you must also supply with-'+self.package+'-lib\n')
     if 'with-'+self.package+'-lib' in self.argDB and not 'with-'+self.package+'-include' in self.argDB:
       if self.includes:
@@ -417,7 +450,7 @@ class Package(config.base.Configure):
         raise RuntimeError('Use --with-'+self.package+'-include; not --with-'+self.package+'-include-dir')
 
     if 'with-'+self.package+'-include' in self.argDB or 'with-'+self.package+'-lib' in self.argDB:
-      if self.liblist[0]:
+      if self.liblist and self.liblist[0]:
         libs  = self.argDB['with-'+self.package+'-lib']
         slibs = str(self.argDB['with-'+self.package+'-lib'])
       else:
@@ -469,8 +502,10 @@ class Package(config.base.Configure):
     '''Check if we should download the package, returning the install directory or the empty string indicating installation'''
     if not self.download:
       return ''
-    if self.framework.batchBodies and not self.installwithbatch:
-      return
+    if not self.installwithbatch and self.argDB['with-batch']: raise RuntimeError('--download-'+self.name+' cannot be used on batch systems. You must either\n\
+    1) load the appropriate module on your system and use --with-'+self.name+' or \n\
+    2) locate its installation on your machine or install it yourself and use --with-'+self.name+'-dir=path\n')
+
     if self.argDB['download-'+self.package]:
       if self.license and not os.path.isfile('.'+self.package+'_license'):
         self.logClear()
@@ -495,12 +530,20 @@ class Package(config.base.Configure):
     makefileSaved  = os.path.join(self.confDir, 'lib','petsc','conf','pkg.conf.'+self.package)
     gcommfile      = os.path.join(self.packageDir, 'pkg.gitcommit')
     gcommfileSaved = os.path.join(self.confDir,'lib','petsc','conf', 'pkg.gitcommit.'+self.package)
+    if self.downloaded:
+      self.log.write(self.PACKAGE+' was just downloaded, forcing a rebuild because cannot determine if package has changed\n')
+      return 1
     if not os.path.isfile(makefileSaved) or not (self.getChecksum(makefileSaved) == self.getChecksum(makefile)):
       self.log.write('Have to rebuild '+self.PACKAGE+', '+makefile+' != '+makefileSaved+'\n')
       return 1
-    if os.path.isfile(gcommfile) and (not os.path.isfile(gcommfileSaved) or not (self.getChecksum(gcommfileSaved) == self.getChecksum(gcommfile))):
-      self.log.write('Have to rebuild '+self.PACKAGE+', '+gcommfile+' != '+gcommfileSaved+'\n')
-      return 1
+    else:
+      self.log.write('Makefile '+makefileSaved+' has correct checksum\n')
+    if os.path.isfile(gcommfile):
+      if not os.path.isfile(gcommfileSaved) or not (self.getChecksum(gcommfileSaved) == self.getChecksum(gcommfile)):
+        self.log.write('Have to rebuild '+self.PACKAGE+', '+gcommfile+' != '+gcommfileSaved+'\n')
+        return 1
+      else:
+        self.log.write('Commit file '+gcommfileSaved+' has correct checksum\n')
     self.log.write('Do not need to rebuild '+self.PACKAGE+'\n')
     return 0
 
@@ -566,10 +609,12 @@ class Package(config.base.Configure):
       try:
         gitcommit_hash,err,ret = config.base.Configure.executeShellCommand([self.sourceControl.git, 'rev-parse', self.gitcommit], cwd=self.packageDir, log = self.log)
       except:
-        raise RuntimeError('Unable to locate commit: '+self.gitcommit+' in repository: '+self.packageDir+'.\n If its a remote branch- use: origin/'+self.gitcommit)
+        raise RuntimeError('Unable to locate commit: '+self.gitcommit+' in repository: '+self.packageDir+'.\n\
+If its a commit/tag that is not found - perhaps the repo URL changed. If so, delete '+self.packageDir+' and rerun configure.\n\
+If its a remote branch, use: origin/'+self.gitcommit+' for gitcommit.')
       if self.gitcommit != 'HEAD':
         try:
-          config.base.Configure.executeShellCommand([self.sourceControl.git, 'stash'], cwd=self.packageDir, log = self.log)
+          config.base.Configure.executeShellCommand([self.sourceControl.git, '-c', 'user.name=petsc-configure', '-c', 'user.email=petsc@configure', 'stash'], cwd=self.packageDir, log = self.log)
           config.base.Configure.executeShellCommand([self.sourceControl.git, 'clean', '-f', '-d', '-x'], cwd=self.packageDir, log = self.log)
         except:
           raise RuntimeError('Unable to run git stash/clean in repository: '+self.packageDir+'.\nPerhaps its a git error!')
@@ -589,25 +634,26 @@ class Package(config.base.Configure):
     if not os.path.isdir(packages):
       os.makedirs(packages)
       self.framework.actions.addArgument('Framework', 'Directory creation', 'Created the external packages directory: '+packages)
-    Dir = None
+    Dir = []
     pkgdirs = os.listdir(packages)
     gitpkg  = 'git.'+self.package
     hgpkg  = 'hg.'+self.package
     self.logPrint('Looking for '+self.PACKAGE+' at '+gitpkg+ ', '+hgpkg+' or a directory starting with '+str(self.downloaddirnames))
     if hasattr(self.sourceControl, 'git') and gitpkg in pkgdirs:
-      Dir = gitpkg
-    elif hasattr(self.sourceControl, 'hg') and hgpkg in pkgdirs:
-      Dir = hgpkg
-    else:
-      for d in pkgdirs:
-        for j in self.downloaddirnames:
-          if d.startswith(j) and os.path.isdir(os.path.join(packages, d)) and not self.matchExcludeDir(d):
-            Dir = d
-            break
-        if Dir: break
+      Dir.append(gitpkg)
+    if hasattr(self.sourceControl, 'hg') and hgpkg in pkgdirs:
+      Dir.append(hgpkg)
+    for d in pkgdirs:
+      for j in self.downloaddirnames:
+        if d.startswith(j) and os.path.isdir(os.path.join(packages, d)) and not self.matchExcludeDir(d):
+          Dir.append(d)
+
+    if len(Dir) > 1:
+      raise RuntimeError('Located multiple directories with package '+self.package+' '+str(Dir)+'\nDelete directory '+self.arch+' and rerun ./configure')
+
     if Dir:
-      self.logPrint('Found a copy of '+self.PACKAGE+' in '+str(Dir))
-      return os.path.join(packages, Dir)
+      self.logPrint('Found a copy of '+self.PACKAGE+' in '+str(Dir[0]))
+      return os.path.join(packages, Dir[0])
     else:
       self.logPrint('Could not locate an existing copy of '+self.PACKAGE+':')
       self.logPrint('  '+str(pkgdirs))
@@ -661,9 +707,10 @@ class Package(config.base.Configure):
         retriever.saveLog()
         pkgdir = self.getDir()
         if not pkgdir:
-          raise RuntimeError('Could not located downloaded package ' +self.PACKAGE +' in '+self.externalPackagesDir)
+          raise RuntimeError('Could not locate downloaded package ' +self.PACKAGE +' in '+self.externalPackagesDir)
         self.framework.actions.addArgument(self.PACKAGE, 'Download', 'Downloaded '+self.PACKAGE+' into '+pkgdir)
         retriever.restoreLog()
+        self.downloaded = 1
         return pkgdir
       except RuntimeError as e:
         self.logPrint('ERROR: '+str(e))
@@ -807,40 +854,135 @@ class Package(config.base.Configure):
     pass
 
   def consistencyChecks(self):
-    if self.skippackagewithoptions: return
     if 'with-'+self.package+'-dir' in self.argDB and ('with-'+self.package+'-include' in self.argDB or 'with-'+self.package+'-lib' in self.argDB):
       raise RuntimeError('Specify either "--with-'+self.package+'-dir" or "--with-'+self.package+'-lib --with-'+self.package+'-include". But not both!')
 
-    # if user did not request option, then turn it off it conflicts with configuration
+    blaslapackconflict = 0
+    for pkg in self.deps:
+      if pkg.package == 'blaslapack':
+        if pkg.has64bitindices and self.requires32bitintblas:
+          blaslapackconflict = 1
+
+    # if user did not request option, then turn it off if conflicts with configuration
     if self.lookforbydefault and 'with-'+self.package not in self.framework.clArgDB:
       if (self.cxx and not hasattr(self.compilers, 'CXX')) or \
          (self.fc and not hasattr(self.compilers, 'FC')) or \
          (self.noMPIUni and self.mpi.usingMPIUni) or \
-         (self.requirescxx11 and self.compilers.cxxdialect != 'C++11') or \
+         (self.requirescxx14 and self.compilers.cxxdialect not in ['C++14']) or \
+         (self.requirescxx11 and self.compilers.cxxdialect not in ['C++11','C++14']) or \
          (not self.defaultPrecision.lower() in self.precisions) or \
          (not self.complex and self.defaultScalarType.lower() == 'complex') or \
-         (self.defaultIndexSize == 64 and self.requires32bitint):
+         (self.defaultIndexSize == 64 and self.requires32bitint) or \
+         (blaslapackconflict):
        self.argDB['with-'+self.package] = 0
 
     if self.argDB['with-'+self.package]:
+      if blaslapackconflict:
+        raise RuntimeError('Cannot use '+self.name+' with 64 bit BLAS/Lapack indices')
       if self.cxx and not hasattr(self.compilers, 'CXX'):
         raise RuntimeError('Cannot use '+self.name+' without C++, make sure you do NOT have --with-cxx=0')
       if self.fc and not hasattr(self.compilers, 'FC'):
         raise RuntimeError('Cannot use '+self.name+' without Fortran, make sure you do NOT have --with-fc=0')
       if self.noMPIUni and self.mpi.usingMPIUni:
         raise RuntimeError('Cannot use '+self.name+' with MPIUNI, you need a real MPI')
-      if self.requirescxx11 and self.compilers.cxxdialect != 'C++11':
+      if self.requirescxx14 and self.compilers.cxxdialect not in ['C++14']:
+        raise RuntimeError('Cannot use '+self.name+' without enabling C++14, see --with-cxx-dialect=C++14')
+      if self.requirescxx11 and self.compilers.cxxdialect not in ['C++11','C++14']:
         raise RuntimeError('Cannot use '+self.name+' without enabling C++11, see --with-cxx-dialect=C++11')
       if self.download and self.argDB.get('download-'+self.downloadname.lower()) and not self.downloadonWindows and (self.setCompilers.CC.find('win32fe') >= 0):
         raise RuntimeError('External package '+self.name+' does not support --download-'+self.downloadname.lower()+' with Microsoft compilers')
       if not self.defaultPrecision.lower() in self.precisions:
-        raise RuntimeError('Cannot use '+self.name+' with '+self.defaultPrecision.lower()+', it is either not coded for this capability or petsc interface does not work in this mode')
+        raise RuntimeError('Cannot use '+self.name+' with '+self.defaultPrecision.lower()+', it is not available in this precision')
       if not self.complex and self.defaultScalarType.lower() == 'complex':
         raise RuntimeError('Cannot use '+self.name+' with complex numbers it is not coded for this capability')
       if self.defaultIndexSize == 64 and self.requires32bitint:
         raise RuntimeError('Cannot use '+self.name+' with 64 bit integers, it is not coded for this capability')
     if not self.download and 'download-'+self.downloadname.lower() in self.argDB and self.argDB['download-'+self.downloadname.lower()]:
       raise RuntimeError('External package '+self.name+' does not support --download-'+self.downloadname.lower())
+    return
+
+  def versionToStandardForm(self,version):
+    '''Returns original string'''
+    '''This can be overloaded by packages that have their own unique representation of versions; for example CUDA'''
+    return version
+
+  def versionToTuple(self,version):
+    '''Converts string of the form x.y to (x,y)'''
+    if not version: return ()
+    return tuple(map(int,version.split('.')))
+
+  def checkVersion(self):
+    '''Uses self.version, self.minversion, self.maxversion, self.versionname, and self.versioninclude to determine if package has required version'''
+    def dropPatch(str):
+      '''Drops the patch version number in a version if it exists'''
+      if str.find('.') == str.rfind('.'): return str
+      return str[0:str.rfind('.')]
+    def zeroPatch(str):
+      '''Replaces the patch version number in a version if it exists with 0'''
+      if str.find('.') == str.rfind('.'): return str
+      return str[0:str.rfind('.')]+'.0'
+    def infinitePatch(str):
+      '''Replaces the patch version number in a version if it exists with a very large number'''
+      if str.find('.') == str.rfind('.'): return str
+      return str[0:str.rfind('.')]+'.100000'
+
+    if not self.version and not self.minversion and not self.maxversion and not self.versionname: return
+    if not self.versioninclude:
+      if not self.includes: return
+      self.versioninclude = self.includes[0]
+    oldFlags = self.compilers.CPPFLAGS
+    self.compilers.CPPFLAGS += ' '+self.headers.toString(self.include)
+    if self.cxx:
+      self.pushLanguage('C++')
+    else:
+      self.pushLanguage(self.defaultLanguage)
+    try:
+      output,err,ret  = self.preprocess('#include "'+self.versioninclude+'"\nversion='+self.versionname+'\n')
+    except:
+      self.log.write('For '+self.package+' unable to run preprocessor to obtain version information: output below, skipping version check\n')
+      return
+    self.popLanguage()
+    self.compilers.CPPFLAGS = oldFlags
+    loutput = output.split('\n')
+    version = ''
+    for i in loutput:
+      if i.startswith('version='):
+        version = i[8:]
+        break
+    if not version:
+      self.log.write('For '+self.package+' unable to find version information: output below, skipping version check\n')
+      self.log.write(output)
+      return
+    version = version.replace(' ','').replace('\"','')
+    try:
+      self.foundversion = self.versionToStandardForm(version)
+      self.version_tuple = self.versionToTuple(self.foundversion)
+    except:
+      self.log.write('For '+self.package+' unable to convert version to standard form, skipping version check\n')
+      return
+
+    self.log.write('For '+self.package+' need '+self.minversion+' <= '+self.foundversion+' <= '+self.maxversion+'\n')
+
+    try:
+      foundversiontuple = self.versionToTuple(self.foundversion)
+    except:
+      self.log.write('For '+self.package+' unable to convert version string to tuple, skipping version check\n')
+      return
+
+    suggest = ''
+    if self.download: suggest = '\nSuggest using --download-'+self.package+' for a compatible '+self.name
+    if self.minversion:
+      if self.versionToTuple(self.minversion) > foundversiontuple:
+        raise RuntimeError(self.package+' version is '+self.foundversion+' this version of PETSc needs at least '+self.minversion+suggest+'\n')
+    elif self.version:
+      if self.versionToTuple(zeroPatch(self.version)) > foundversiontuple:
+        self.logPrintBox('Warning: Using version '+self.foundversion+' of package '+self.package+' PETSc is tested with '+dropPatch(self.version)+suggest)
+    if self.maxversion:
+      if self.versionToTuple(self.maxversion) < foundversiontuple:
+        raise RuntimeError(self.package+' version is '+self.foundversion+' this version of PETSc needs at most '+self.maxversion+suggest+'\n')
+    elif self.version:
+      if self.versionToTuple(infinitePatch(self.version)) < foundversiontuple:
+        self.logPrintBox('Warning: Using version '+self.foundversion+' of package '+self.package+' PETSc is tested with '+dropPatch(self.version)+suggest)
     return
 
   def configure(self):
@@ -851,6 +993,8 @@ class Package(config.base.Configure):
         self.download = [downloadPackageVal]
     if self.download and self.argDB['download-'+self.downloadname.lower()+'-commit']:
       self.gitcommit = self.argDB['download-'+self.downloadname.lower()+'-commit']
+    elif self.gitcommitmaster and not self.petscdir.versionRelease:
+      self.gitcommit = self.gitcommitmaster
     if not 'with-'+self.package in self.argDB:
       self.argDB['with-'+self.package] = 0
     if 'with-'+self.package+'-dir' in self.argDB or 'with-'+self.package+'-include' in self.argDB or 'with-'+self.package+'-lib' in self.argDB:
@@ -864,6 +1008,7 @@ class Package(config.base.Configure):
       self.libraries.pushLanguage(self.defaultLanguage)
       self.executeTest(self.checkDependencies)
       self.executeTest(self.configureLibrary)
+      self.executeTest(self.checkVersion)
       self.executeTest(self.checkSharedLibrary)
       self.libraries.popLanguage()
     else:
@@ -900,6 +1045,7 @@ class Package(config.base.Configure):
     self.setCompilers.updateMPICompilers(mpicc,mpicxx,mpifc)
     self.compilers.__init__(self.framework)
     self.compilers.headerPrefix = self.headerPrefix
+    self.compilers.setup()
     self.compilerFlags.saveLog()
     self.compilerFlags.configure()
     self.logWrite(self.compilerFlags.restoreLog())
@@ -933,21 +1079,21 @@ class Package(config.base.Configure):
   def compilePETSc(self):
     try:
       self.logPrintBox('Compiling PETSc; this may take several minutes')
-      output,err,ret  = config.package.Package.executeShellCommand('cd '+self.petscdir.dir+' && '+self.make.make+' all PETSC_DIR='+self.petscdir.dir+' PETSC_ARCH='+self.arch,timeout=1000, log = self.log)
+      output,err,ret  = config.package.Package.executeShellCommand(self.make.make+' all PETSC_DIR='+self.petscdir.dir+' PETSC_ARCH='+self.arch, cwd=self.petscdir.dir, timeout=1000, log = self.log)
       self.log.write(output+err)
     except RuntimeError as e:
       raise RuntimeError('Error running make all on PETSc: '+str(e))
     if self.framework.argDB['prefix']:
       try:
         self.logPrintBox('Installing PETSc; this may take several minutes')
-        output,err,ret  = config.package.Package.executeShellCommand('cd '+self.petscdir.dir+' && '+self.installDirProvider.installSudo+self.make.make+' install PETSC_DIR='+self.petscdir.dir+' PETSC_ARCH='+self.arch,timeout=50, log = self.log)
+        output,err,ret  = config.package.Package.executeShellCommand(self.installDirProvider.installSudo+self.make.make+' install PETSC_DIR='+self.petscdir.dir+' PETSC_ARCH='+self.arch, cwd=self.petscdir.dir, timeout=50, log = self.log)
         self.log.write(output+err)
       except RuntimeError as e:
         raise RuntimeError('Error running make install on PETSc: '+str(e))
     elif not self.argDB['with-batch']:
       try:
         self.logPrintBox('Testing PETSc; this may take several minutes')
-        output,err,ret  = config.package.Package.executeShellCommand('cd '+self.petscdir.dir+' && '+self.make.make+' test PETSC_DIR='+self.petscdir.dir+' PETSC_ARCH='+self.arch,timeout=50, log = self.log)
+        output,err,ret  = config.package.Package.executeShellCommand(self.make.make+' test PETSC_DIR='+self.petscdir.dir+' PETSC_ARCH='+self.arch, cwd=self.petscdir.dir, timeout=50, log = self.log)
         output = output+err
         self.log.write(output)
         if output.find('error') > -1 or output.find('Error') > -1:
@@ -1233,7 +1379,7 @@ class GNUPackage(Package):
     config.package.Package.setupHelp(self,help)
     import nargs
     help.addArgument(self.PACKAGE, '-download-'+self.package+'-shared=<bool>',     nargs.ArgBool(None, 0, 'Install '+self.PACKAGE+' with shared libraries'))
-    help.addArgument(self.PACKAGE, '-download-'+self.package+'-configure-arguments=string', nargs.ArgString(None, 0, 'Additional GNU autoconf configure arguments for the build'+self.name))
+    help.addArgument(self.PACKAGE, '-download-'+self.package+'-configure-arguments=string', nargs.ArgString(None, 0, 'Additional GNU autoconf configure arguments for the build of '+self.name))
 
   def formGNUConfigureArgs(self):
     '''This sets up the prefix, compiler flags, shared flags, and other generic arguments
@@ -1304,7 +1450,10 @@ class GNUPackage(Package):
         raise RuntimeError('libtoolize required for ' + self.PACKAGE+' not found!')
       try:
         self.logPrintBox('Running autoreconf on ' +self.PACKAGE+'; this may take several minutes')
-        output,err,ret  = config.base.Configure.executeShellCommand('cd '+self.packageDir+' && '+self.programs.libtoolize+' && '+self.programs.autoreconf + ' --force --install', timeout=200, log = self.log)
+        output,err,ret  = config.base.Configure.executeShellCommand(self.programs.libtoolize, cwd=self.packageDir, timeout=100, log=self.log)
+        if ret:
+          raise RuntimeError('Error in libtoolize: ' + str(e))
+        output,err,ret  = config.base.Configure.executeShellCommand([self.programs.autoreconf, '--force', '--install'], cwd=self.packageDir, timeout=200, log = self.log)
       except RuntimeError as e:
         raise RuntimeError('Error running autoreconf on ' + self.PACKAGE+': '+str(e))
 
@@ -1314,7 +1463,7 @@ class GNUPackage(Package):
        args.append(self.argDB['download-'+self.downloadname.lower()+'-configure-arguments'])
     args = ' '.join(args)
     conffile = os.path.join(self.packageDir,self.package+'.petscconf')
-    fd = file(conffile, 'w')
+    fd = open(conffile, 'w')
     fd.write(args)
     fd.close()
     ### Use conffile to check whether a reconfigure/rebuild is required
@@ -1323,7 +1472,7 @@ class GNUPackage(Package):
     ### Configure and Build package
     try:
       self.logPrintBox('Running configure on ' +self.PACKAGE+'; this may take several minutes')
-      output1,err1,ret1  = config.base.Configure.executeShellCommand('cd '+self.packageDir+' && ./configure '+args, timeout=2000, log = self.log)
+      output1,err1,ret1  = config.base.Configure.executeShellCommand('./configure '+args, cwd=self.packageDir, timeout=2000, log = self.log)
     except RuntimeError as e:
       raise RuntimeError('Error running configure on ' + self.PACKAGE+': '+str(e))
     try:
@@ -1331,11 +1480,11 @@ class GNUPackage(Package):
       if self.parallelMake: pmake = self.make.make_jnp+' '+self.makerulename+' '
       else: pmake = self.make.make+' '+self.makerulename+' '
 
-      output2,err2,ret2  = config.base.Configure.executeShellCommand('cd '+self.packageDir+' && '+self.make.make+' clean', timeout=200, log = self.log)
-      output3,err3,ret3  = config.base.Configure.executeShellCommand('cd '+self.packageDir+' && '+pmake, timeout=6000, log = self.log)
+      output2,err2,ret2  = config.base.Configure.executeShellCommand(self.make.make+' clean', cwd=self.packageDir, timeout=200, log = self.log)
+      output3,err3,ret3  = config.base.Configure.executeShellCommand(pmake, cwd=self.packageDir, timeout=6000, log = self.log)
       self.logPrintBox('Running make install on '+self.PACKAGE+'; this may take several minutes')
       self.installDirProvider.printSudoPasswordMessage(self.installSudo)
-      output4,err4,ret4  = config.base.Configure.executeShellCommand('cd '+self.packageDir+' && '+self.installSudo+self.make.make+' install', timeout=1000, log = self.log)
+      output4,err4,ret4  = config.base.Configure.executeShellCommand(self.installSudo+self.make.make+' install', cwd=self.packageDir, timeout=1000, log = self.log)
     except RuntimeError as e:
       raise RuntimeError('Error running make; make install on '+self.PACKAGE+': '+str(e))
     self.postInstall(output1+err1+output2+err2+output3+err3+output4+err4, conffile)
@@ -1350,7 +1499,7 @@ class CMakePackage(Package):
     config.package.Package.setupHelp(self,help)
     import nargs
     help.addArgument(self.PACKAGE, '-download-'+self.package+'-shared=<bool>',     nargs.ArgBool(None, 0, 'Install '+self.PACKAGE+' with shared libraries'))
-    help.addArgument(self.PACKAGE, '-download-'+self.package+'-cmake-arguments=string', nargs.ArgString(None, 0, 'Additional CMake arguments for the build'+self.name))
+    help.addArgument(self.PACKAGE, '-download-'+self.package+'-cmake-arguments=string', nargs.ArgString(None, 0, 'Additional CMake arguments for the build of '+self.name))
   def setupDependencies(self, framework):
     Package.setupDependencies(self, framework)
     self.cmake = framework.require('config.packages.cmake',self)
@@ -1408,7 +1557,7 @@ class CMakePackage(Package):
        args.append(self.argDB['download-'+self.downloadname.lower()+'-cmake-arguments'])
     args = ' '.join(args)
     conffile = os.path.join(self.packageDir,self.package+'.petscconf')
-    fd = file(conffile, 'w')
+    fd = open(conffile, 'w')
     fd.write(args)
     fd.close()
 
@@ -1426,14 +1575,15 @@ class CMakePackage(Package):
 
       try:
         self.logPrintBox('Configuring '+self.PACKAGE+' with cmake, this may take several minutes')
-        output1,err1,ret1  = config.package.Package.executeShellCommand('cd '+folder+' && '+self.cmake.cmake+' .. '+args, timeout=900, log = self.log)
+        output1,err1,ret1  = config.package.Package.executeShellCommand(self.cmake.cmake+' .. '+args, cwd=folder, timeout=900, log = self.log)
       except RuntimeError as e:
         raise RuntimeError('Error configuring '+self.PACKAGE+' with cmake '+str(e))
       try:
         self.logPrintBox('Compiling and installing '+self.PACKAGE+'; this may take several minutes')
         self.installDirProvider.printSudoPasswordMessage()
-        output2,err2,ret2  = config.package.Package.executeShellCommand('cd '+folder+' && '+self.make.make_jnp+' '+self.makerulename+' && '+self.installSudo+' '+self.make.make+' install', timeout=3000, log = self.log)
+        output2,err2,ret2  = config.package.Package.executeShellCommand(self.make.make_jnp+' '+self.makerulename, cwd=folder, timeout=3000, log = self.log)
+        output3,err3,ret3  = config.package.Package.executeShellCommand(self.installSudo+' '+self.make.make+' install', cwd=folder, timeout=3000, log = self.log)
       except RuntimeError as e:
         raise RuntimeError('Error running make on  '+self.PACKAGE+': '+str(e))
-      self.postInstall(output1+err1+output2+err2,conffile)
+      self.postInstall(output1+err1+output2+err2+output3+err3,conffile)
     return self.installDir

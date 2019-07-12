@@ -22,9 +22,9 @@ PetscErrorCode ProcessOptions(MPI_Comm comm, AppCtx *options)
   options->fill      = 0.10;
 
   ierr = PetscOptionsBegin(comm, "", "Meshing Problem Options", "DMPLEX");CHKERRQ(ierr);
-  ierr = PetscOptionsInt("-debug", "The debugging level", "ex6.c", options->debug, &options->debug, NULL);CHKERRQ(ierr);
-  ierr = PetscOptionsInt("-num_strata", "The number of label values", "ex6.c", options->numStrata, &options->numStrata, NULL);CHKERRQ(ierr);
-  ierr = PetscOptionsInt("-pend", "The label point limit", "ex6.c", options->pEnd, &options->pEnd, NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsBoundedInt("-debug", "The debugging level", "ex6.c", options->debug, &options->debug, NULL,0);CHKERRQ(ierr);
+  ierr = PetscOptionsBoundedInt("-num_strata", "The number of label values", "ex6.c", options->numStrata, &options->numStrata, NULL,0);CHKERRQ(ierr);
+  ierr = PetscOptionsBoundedInt("-pend", "The label point limit", "ex6.c", options->pEnd, &options->pEnd, NULL,0);CHKERRQ(ierr);
   ierr = PetscOptionsReal("-fill", "The percentage of label chart to set", "ex6.c", options->fill, &options->fill, NULL);CHKERRQ(ierr);
   ierr = PetscOptionsEnd();
   PetscFunctionReturn(0);
@@ -114,7 +114,7 @@ int main(int argc, char **argv)
 
   ierr = PetscInitialize(&argc, &argv, NULL,help);if (ierr) return ierr;
   ierr = ProcessOptions(PETSC_COMM_WORLD, &user);CHKERRQ(ierr);
-  ierr = DMLabelCreate("Test Label", &label);CHKERRQ(ierr);
+  ierr = DMLabelCreate(PETSC_COMM_SELF, "Test Label", &label);CHKERRQ(ierr);
   ierr = TestSetup(label, &user);CHKERRQ(ierr);
   ierr = TestLookup(label, &user);CHKERRQ(ierr);
   ierr = TestClear(label,&user);CHKERRQ(ierr);

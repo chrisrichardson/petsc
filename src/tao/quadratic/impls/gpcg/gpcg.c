@@ -112,11 +112,11 @@ static PetscErrorCode TaoSetup_GPCG(Tao tao)
   ierr=VecDuplicate(tao->solution,&gpcg->PG);CHKERRQ(ierr);
   /*
     if (gpcg->ksp_type == GPCG_KSP_NASH) {
-        ierr = KSPSetType(tao->ksp,KSPCGNASH);CHKERRQ(ierr);
+        ierr = KSPSetType(tao->ksp,KSPNASH);CHKERRQ(ierr);
       } else if (gpcg->ksp_type == GPCG_KSP_STCG) {
-        ierr = KSPSetType(tao->ksp,KSPCGSTCG);CHKERRQ(ierr);
+        ierr = KSPSetType(tao->ksp,KSPSTCG);CHKERRQ(ierr);
       } else {
-        ierr = KSPSetType(tao->ksp,KSPCGGLTR);CHKERRQ(ierr);
+        ierr = KSPSetType(tao->ksp,KSPGLTR);CHKERRQ(ierr);
       }
       if (tao->ksp->ops->setfromoptions) {
         (*tao->ksp->ops->setfromoptions)(tao->ksp);
@@ -172,7 +172,7 @@ static PetscErrorCode TaoSolve_GPCG(Tao tao)
   while (tao->reason == TAO_CONTINUE_ITERATING){
     /* Call general purpose update function */
     if (tao->ops->update) {
-      ierr = (*tao->ops->update)(tao, tao->niter);CHKERRQ(ierr);
+      ierr = (*tao->ops->update)(tao, tao->niter, tao->user_update);CHKERRQ(ierr);
     }
     tao->ksp_its=0;
 
@@ -367,7 +367,7 @@ PETSC_EXTERN PetscErrorCode TaoCreate_GPCG(Tao tao)
   ierr = KSPCreate(((PetscObject)tao)->comm, &tao->ksp);CHKERRQ(ierr);
   ierr = PetscObjectIncrementTabLevel((PetscObject)tao->ksp, (PetscObject)tao, 1);CHKERRQ(ierr);
   ierr = KSPSetOptionsPrefix(tao->ksp, tao->hdr.prefix);CHKERRQ(ierr);
-  ierr = KSPSetType(tao->ksp,KSPCGNASH);CHKERRQ(ierr);
+  ierr = KSPSetType(tao->ksp,KSPNASH);CHKERRQ(ierr);
 
   ierr = TaoLineSearchCreate(((PetscObject)tao)->comm, &tao->linesearch);CHKERRQ(ierr);
   ierr = PetscObjectIncrementTabLevel((PetscObject)tao->linesearch, (PetscObject)tao, 1);CHKERRQ(ierr);

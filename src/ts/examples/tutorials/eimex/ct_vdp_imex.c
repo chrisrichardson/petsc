@@ -56,7 +56,7 @@ int main(int argc, char **argv)
   struct _User      user;       /* user-defined work context */
   PetscViewer       viewer;
 
-  ierr = PetscInitialize(&argc,&argv,NULL,help);CHKERRQ(ierr);
+  ierr = PetscInitialize(&argc,&argv,NULL,help);if (ierr) return ierr;
   /* Initialize user application context */
   ierr = PetscOptionsBegin(PETSC_COMM_WORLD,NULL,"van der Pol options","");
   user.mu      = 1e0;
@@ -233,12 +233,12 @@ static PetscErrorCode IJacobian(TS  ts,PetscReal t,Vec X,Vec Xdot,PetscReal a,Ma
 /*TEST
 
    test:
-     args: -ts_type eimex -ts_adapt_type none  -pc_type lu -ts_dt 0.01 -ts_final_time 10 -ts_eimex_row_col 3,3 -ts_monitor_lg_solution
+     args: -ts_type eimex -ts_adapt_type none  -pc_type lu -ts_dt 0.01 -ts_max_time 10 -ts_eimex_row_col 3,3 -ts_monitor_lg_solution
      requires: x
 
    test:
      suffix: adapt
-     args: -ts_type eimex -ts_adapt_type none  -pc_type lu -ts_dt 0.01 -ts_final_time 10 -ts_eimex_order_adapt -ts_eimex_max_rows 7 -ts_monitor_lg_solution
+     args: -ts_type eimex -ts_adapt_type none  -pc_type lu -ts_dt 0.01 -ts_max_time 10 -ts_eimex_order_adapt -ts_eimex_max_rows 7 -ts_monitor_lg_solution
      requires: x
 
    test:

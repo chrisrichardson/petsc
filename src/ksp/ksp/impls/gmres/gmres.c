@@ -157,6 +157,7 @@ PetscErrorCode KSPGMRESCycle(PetscInt *itcount,KSP ksp)
 
     /* vv(i+1) . vv(i+1) */
     ierr = VecNormalize(VEC_VV(it+1),&tt);CHKERRQ(ierr);
+    KSPCheckNorm(ksp,tt);
 
     /* save the magnitude */
     *HH(it+1,it)  = tt;
@@ -181,7 +182,9 @@ PetscErrorCode KSPGMRESCycle(PetscInt *itcount,KSP ksp)
 
     /* Catch error in happy breakdown and signal convergence and break from loop */
     if (hapend) {
-      if (!ksp->reason) {
+      if (ksp->normtype == KSP_NORM_NONE) { /* convergence test was skipped in this case */
+        ksp->reason = KSP_CONVERGED_HAPPY_BREAKDOWN;
+      } else if (!ksp->reason) {
         if (ksp->errorifnotconverged) SETERRQ1(PetscObjectComm((PetscObject)ksp),PETSC_ERR_NOT_CONVERGED,"You reached the happy break down, but convergence was not indicated. Residual norm = %g",(double)res);
         else {
           ksp->reason = KSP_DIVERGED_BREAKDOWN;
@@ -243,7 +246,7 @@ PetscErrorCode KSPSolve_GMRES(KSP ksp)
           ierr = VecDuplicateVecs(VEC_VV(0),N,&gmres->vecb);CHKERRQ(ierr);
         }
         ierr = PetscBLASIntCast(N,&bN);CHKERRQ(ierr);
-        ierr = PetscMemcpy(gmres->hes_ritz,gmres->hes_origin,bN*bN*sizeof(PetscReal));CHKERRQ(ierr);
+        ierr = PetscArraycpy(gmres->hes_ritz,gmres->hes_origin,bN*bN);CHKERRQ(ierr);
         for (i=0; i<gmres->max_k+1; i++) {
           ierr = VecCopy(VEC_VV(i),gmres->vecb[i]);CHKERRQ(ierr);
         }
@@ -343,7 +346,8 @@ static PetscErrorCode KSPGMRESBuildSoln(PetscScalar *nrs,Vec vs,Vec vdest,KSP ks
   if (*HH(it,it) != 0.0) {
     nrs[it] = *GRS(it) / *HH(it,it);
   } else {
-    ksp->reason = KSP_DIVERGED_BREAKDOWN;
+    if (ksp->errorifnotconverged) SETERRQ(PetscObjectComm((PetscObject)ksp),PETSC_ERR_NOT_CONVERGED,"You reached the break down in GMRES; HH(it,it) = 0");
+    else ksp->reason = KSP_DIVERGED_BREAKDOWN;
 
     ierr = PetscInfo2(ksp,"Likely your matrix or preconditioner is singular. HH(it,it) is identically zero; it = %D GRS(it) = %g\n",it,(double)PetscAbsScalar(*GRS(it)));CHKERRQ(ierr);
     PetscFunctionReturn(0);
@@ -353,10 +357,12 @@ static PetscErrorCode KSPGMRESBuildSoln(PetscScalar *nrs,Vec vs,Vec vdest,KSP ks
     tt = *GRS(k);
     for (j=k+1; j<=it; j++) tt = tt - *HH(k,j) * nrs[j];
     if (*HH(k,k) == 0.0) {
-      ksp->reason = KSP_DIVERGED_BREAKDOWN;
-
-      ierr = PetscInfo1(ksp,"Likely your matrix or preconditioner is singular. HH(k,k) is identically zero; k = %D\n",k);CHKERRQ(ierr);
-      PetscFunctionReturn(0);
+      if (ksp->errorifnotconverged) SETERRQ1(PetscObjectComm((PetscObject)ksp),PETSC_ERR_NOT_CONVERGED,"Likely your matrix or preconditioner is singular. HH(k,k) is identically zero; k = %D\n",k);
+      else {
+        ksp->reason = KSP_DIVERGED_BREAKDOWN;
+        ierr = PetscInfo1(ksp,"Likely your matrix or preconditioner is singular. HH(k,k) is identically zero; k = %D\n",k);CHKERRQ(ierr);
+        PetscFunctionReturn(0);
+      }
     }
     nrs[k] = tt / *HH(k,k);
   }
@@ -405,8 +411,11 @@ static PetscErrorCode KSPGMRESUpdateHessenberg(KSP ksp,PetscInt it,PetscBool hap
   if (!hapend) {
     tt = PetscSqrtScalar(PetscConj(*hh) * *hh + PetscConj(*(hh+1)) * *(hh+1));
     if (tt == 0.0) {
-      ksp->reason = KSP_DIVERGED_NULL;
-      PetscFunctionReturn(0);
+      if (ksp->errorifnotconverged) SETERRQ(PetscObjectComm((PetscObject)ksp),PETSC_ERR_NOT_CONVERGED,"tt == 0.0");
+      else {
+        ksp->reason = KSP_DIVERGED_NULL;
+        PetscFunctionReturn(0);
+      }
     }
     *cc        = *hh / tt;
     *ss        = *(hh+1) / tt;
@@ -473,7 +482,7 @@ PetscErrorCode KSPBuildSolution_GMRES(KSP ksp,Vec ptr,Vec *result)
   if (!gmres->nrs) {
     /* allocate the work area */
     ierr = PetscMalloc1(gmres->max_k,&gmres->nrs);CHKERRQ(ierr);
-    ierr = PetscLogObjectMemory((PetscObject)ksp,gmres->max_k*sizeof(PetscScalar));CHKERRQ(ierr);
+    ierr = PetscLogObjectMemory((PetscObject)ksp,gmres->max_k);CHKERRQ(ierr);
   }
 
   ierr = KSPGMRESBuildSoln(gmres->nrs,ksp->vec_sol,ptr,ksp,gmres->it);CHKERRQ(ierr);
@@ -522,7 +531,7 @@ PetscErrorCode KSPView_GMRES(KSP ksp,PetscViewer viewer)
 /*@C
    KSPGMRESMonitorKrylov - Calls VecView() for each new direction in the GMRES accumulated Krylov space.
 
-   Collective on KSP
+   Collective on ksp
 
    Input Parameters:
 +  ksp - the KSP context
@@ -536,8 +545,6 @@ PetscErrorCode KSPView_GMRES(KSP ksp,PetscViewer viewer)
    Notes:
     A new PETSCVIEWERDRAW is created for each Krylov vector so they can all be simultaneously viewed
    Level: intermediate
-
-.keywords: KSP, nonlinear, vector, monitor, view, Krylov space
 
 .seealso: KSPMonitorSet(), KSPMonitorDefault(), VecView(), KSPViewersCreate(), KSPViewersDestroy()
 @*/
@@ -679,7 +686,7 @@ PetscErrorCode  KSPGMRESGetCGSRefinementType_GMRES(KSP ksp,KSPGMRESCGSRefinement
    KSPGMRESSetCGSRefinementType - Sets the type of iterative refinement to use
          in the classical Gram Schmidt orthogonalization.
 
-   Logically Collective on KSP
+   Logically Collective on ksp
 
    Input Parameters:
 +  ksp - the Krylov space context
@@ -689,8 +696,6 @@ PetscErrorCode  KSPGMRESGetCGSRefinementType_GMRES(KSP ksp,KSPGMRESCGSRefinement
 .  -ksp_gmres_cgs_refinement_type <refine_never,refine_ifneeded,refine_always>
 
    Level: intermediate
-
-.keywords: KSP, GMRES, iterative refinement
 
 .seealso: KSPGMRESSetOrthogonalization(), KSPGMRESCGSRefinementType, KSPGMRESClassicalGramSchmidtOrthogonalization(), KSPGMRESGetCGSRefinementType(),
           KSPGMRESGetOrthogonalization()
@@ -719,11 +724,9 @@ PetscErrorCode  KSPGMRESSetCGSRefinementType(KSP ksp,KSPGMRESCGSRefinementType t
 .  type - the type of refinement
 
   Options Database:
-.  -ksp_gmres_cgs_refinement_type <never,ifneeded,always>
+.  -ksp_gmres_cgs_refinement_type <refine_never,refine_ifneeded,refine_always>
 
    Level: intermediate
-
-.keywords: KSP, GMRES, iterative refinement
 
 .seealso: KSPGMRESSetOrthogonalization(), KSPGMRESCGSRefinementType, KSPGMRESClassicalGramSchmidtOrthogonalization(), KSPGMRESSetCGSRefinementType(),
           KSPGMRESGetOrthogonalization()
@@ -742,7 +745,7 @@ PetscErrorCode  KSPGMRESGetCGSRefinementType(KSP ksp,KSPGMRESCGSRefinementType *
 /*@
    KSPGMRESSetRestart - Sets number of iterations at which GMRES, FGMRES and LGMRES restarts.
 
-   Logically Collective on KSP
+   Logically Collective on ksp
 
    Input Parameters:
 +  ksp - the Krylov space context
@@ -754,8 +757,6 @@ PetscErrorCode  KSPGMRESGetCGSRefinementType(KSP ksp,KSPGMRESCGSRefinementType *
     Note: The default value is 30.
 
    Level: intermediate
-
-.keywords: KSP, GMRES, restart, iterations
 
 .seealso: KSPSetTolerances(), KSPGMRESSetOrthogonalization(), KSPGMRESSetPreAllocateVectors(), KSPGMRESGetRestart()
 @*/
@@ -785,8 +786,6 @@ PetscErrorCode  KSPGMRESSetRestart(KSP ksp, PetscInt restart)
 
    Level: intermediate
 
-.keywords: KSP, GMRES, restart, iterations
-
 .seealso: KSPSetTolerances(), KSPGMRESSetOrthogonalization(), KSPGMRESSetPreAllocateVectors(), KSPGMRESSetRestart()
 @*/
 PetscErrorCode  KSPGMRESGetRestart(KSP ksp, PetscInt *restart)
@@ -801,7 +800,7 @@ PetscErrorCode  KSPGMRESGetRestart(KSP ksp, PetscInt *restart)
 /*@
    KSPGMRESSetHapTol - Sets tolerance for determining happy breakdown in GMRES, FGMRES and LGMRES.
 
-   Logically Collective on KSP
+   Logically Collective on ksp
 
    Input Parameters:
 +  ksp - the Krylov space context
@@ -815,8 +814,6 @@ PetscErrorCode  KSPGMRESGetRestart(KSP ksp, PetscInt *restart)
          things can happen hence very occasionally you may need to set this value to detect this condition
 
    Level: intermediate
-
-.keywords: KSP, GMRES, tolerance
 
 .seealso: KSPSetTolerances()
 @*/
@@ -842,7 +839,7 @@ PetscErrorCode  KSPGMRESSetHapTol(KSP ksp,PetscReal tol)
                              vectors are allocated as needed)
 .   -ksp_gmres_classicalgramschmidt - use classical (unmodified) Gram-Schmidt to orthogonalize against the Krylov space (fast) (the default)
 .   -ksp_gmres_modifiedgramschmidt - use modified Gram-Schmidt in the orthogonalization (more stable, but slower)
-.   -ksp_gmres_cgs_refinement_type <never,ifneeded,always> - determine if iterative refinement is used to increase the
+.   -ksp_gmres_cgs_refinement_type <refine_never,refine_ifneeded,refine_always> - determine if iterative refinement is used to increase the
                                    stability of the classical Gram-Schmidt  orthogonalization.
 -   -ksp_gmres_krylov_monitor - plot the Krylov space generated
 

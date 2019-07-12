@@ -59,7 +59,7 @@ PetscErrorCode TaoTestGradient(Tao tao,Vec x,Vec g1)
   }
   if (!directionsprinted) {
     ierr = PetscViewerASCIIPrintf(viewer,"  Testing hand-coded Gradient, if (for double precision runs) ||G - Gfd||_F/||G||_F is\n");CHKERRQ(ierr);
-    ierr = PetscViewerASCIIPrintf(viewer,"    O(1.e-8), the hand-coded Hessian is probably correct.\n");CHKERRQ(ierr);
+    ierr = PetscViewerASCIIPrintf(viewer,"    O(1.e-8), the hand-coded Gradient is probably correct.\n");CHKERRQ(ierr);
     directionsprinted = PETSC_TRUE;
   }
   if (complete_print) {
@@ -138,7 +138,7 @@ PetscErrorCode TaoComputeGradient(Tao tao, Vec X, Vec G)
   PetscValidHeaderSpecific(G,VEC_CLASSID,2);
   PetscCheckSameComm(tao,1,X,2);
   PetscCheckSameComm(tao,1,G,3);
-  ierr = VecLockPush(X);CHKERRQ(ierr);
+  ierr = VecLockReadPush(X);CHKERRQ(ierr);
   if (tao->ops->computegradient) {
     ierr = PetscLogEventBegin(TAO_GradientEval,tao,X,G,NULL);CHKERRQ(ierr);
     PetscStackPush("Tao user gradient evaluation routine");
@@ -154,7 +154,7 @@ PetscErrorCode TaoComputeGradient(Tao tao, Vec X, Vec G)
     ierr = PetscLogEventEnd(TAO_ObjGradEval,tao,X,G,NULL);CHKERRQ(ierr);
     tao->nfuncgrads++;
   } else SETERRQ(PETSC_COMM_SELF,PETSC_ERR_ARG_WRONGSTATE,"TaoSetGradientRoutine() has not been called");
-  ierr = VecLockPop(X);CHKERRQ(ierr);
+  ierr = VecLockReadPop(X);CHKERRQ(ierr);
 
   ierr = TaoTestGradient(tao,X,G);CHKERRQ(ierr);
   PetscFunctionReturn(0);
@@ -189,7 +189,7 @@ PetscErrorCode TaoComputeObjective(Tao tao, Vec X, PetscReal *f)
   PetscValidHeaderSpecific(tao,TAO_CLASSID,1);
   PetscValidHeaderSpecific(X,VEC_CLASSID,2);
   PetscCheckSameComm(tao,1,X,2);
-  ierr = VecLockPush(X);CHKERRQ(ierr);
+  ierr = VecLockReadPush(X);CHKERRQ(ierr);
   if (tao->ops->computeobjective) {
     ierr = PetscLogEventBegin(TAO_ObjectiveEval,tao,X,NULL,NULL);CHKERRQ(ierr);
     PetscStackPush("Tao user objective evaluation routine");
@@ -209,7 +209,7 @@ PetscErrorCode TaoComputeObjective(Tao tao, Vec X, PetscReal *f)
     tao->nfuncgrads++;
   }  else SETERRQ(PETSC_COMM_SELF,PETSC_ERR_ARG_WRONGSTATE,"TaoSetObjectiveRoutine() has not been called");
   ierr = PetscInfo1(tao,"TAO Function evaluation: %20.19e\n",(double)(*f));CHKERRQ(ierr);
-  ierr = VecLockPop(X);CHKERRQ(ierr);
+  ierr = VecLockReadPop(X);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
@@ -244,7 +244,7 @@ PetscErrorCode TaoComputeObjectiveAndGradient(Tao tao, Vec X, PetscReal *f, Vec 
   PetscValidHeaderSpecific(G,VEC_CLASSID,4);
   PetscCheckSameComm(tao,1,X,2);
   PetscCheckSameComm(tao,1,G,4);
-  ierr = VecLockPush(X);CHKERRQ(ierr);
+  ierr = VecLockReadPush(X);CHKERRQ(ierr);
   if (tao->ops->computeobjectiveandgradient) {
     ierr = PetscLogEventBegin(TAO_ObjGradEval,tao,X,G,NULL);CHKERRQ(ierr);
     if (tao->ops->computegradient == TaoDefaultComputeGradient) {
@@ -272,7 +272,7 @@ PetscErrorCode TaoComputeObjectiveAndGradient(Tao tao, Vec X, PetscReal *f, Vec 
     tao->ngrads++;
   } else SETERRQ(PETSC_COMM_SELF,PETSC_ERR_ARG_WRONGSTATE,"TaoSetObjectiveRoutine() or TaoSetGradientRoutine() not set");
   ierr = PetscInfo1(tao,"TAO Function evaluation: %20.19e\n",(double)(*f));CHKERRQ(ierr);
-  ierr = VecLockPop(X);CHKERRQ(ierr);
+  ierr = VecLockReadPop(X);CHKERRQ(ierr);
 
   ierr = TaoTestGradient(tao,X,G);CHKERRQ(ierr);
   PetscFunctionReturn(0);
@@ -338,12 +338,12 @@ PetscErrorCode TaoSetResidualRoutine(Tao tao, Vec res, PetscErrorCode (*func)(Ta
   PetscFunctionBegin;
   PetscValidHeaderSpecific(tao,TAO_CLASSID,1);
   PetscValidHeaderSpecific(res,VEC_CLASSID,2);
-  tao->user_lsresP = ctx;
+  ierr = PetscObjectReference((PetscObject)res);CHKERRQ(ierr);
   if (tao->ls_res) {
     ierr = VecDestroy(&tao->ls_res);CHKERRQ(ierr);
   }
-  ierr = PetscObjectReference((PetscObject)res);CHKERRQ(ierr);
   tao->ls_res = res;
+  tao->user_lsresP = ctx;
   tao->ops->computeresidual = func;
   
   PetscFunctionReturn(0);
@@ -376,11 +376,14 @@ PetscErrorCode TaoSetResidualWeights(Tao tao, Vec sigma_v, PetscInt n, PetscInt 
   PetscInt       i;
   PetscFunctionBegin;
   PetscValidHeaderSpecific(tao,TAO_CLASSID,1);
-  ierr = VecDestroy(&tao->res_weights_v);CHKERRQ(ierr);
-  tao->res_weights_v=sigma_v;
   if (sigma_v) {
+    PetscValidHeaderSpecific(sigma_v,VEC_CLASSID,2);
     ierr = PetscObjectReference((PetscObject)sigma_v);CHKERRQ(ierr);
   }
+  if (tao->res_weights_v) {
+    ierr = VecDestroy(&tao->res_weights_v);CHKERRQ(ierr);
+  }
+  tao->res_weights_v=sigma_v;
   if (vals) {
     if (tao->res_weights_n) {
       ierr = PetscFree(tao->res_weights_rows);CHKERRQ(ierr);

@@ -348,7 +348,7 @@ class ArgDirList(Arg):
     import os
     self.checkKey()
     if not isinstance(value, list):
-      value = [value]
+      value = value.split(':')
     # Should check whether it is a well-formed path
     nvalue = []
     for dir in value:
@@ -358,6 +358,72 @@ class ArgDirList(Arg):
     for dir in value:
       if self.mustExist and not os.path.isdir(dir):
         raise ValueError('Invalid directory: '+str(dir)+' for key '+str(self.key))
+    self.value = value
+    return
+
+class ArgFile(Arg):
+  '''Arguments that represent a file'''
+  def __init__(self, key, value = None, help = '', mustExist = 1, isTemporary = 0, deprecated = False):
+    self.mustExist = mustExist
+    Arg.__init__(self, key, value, help, isTemporary, deprecated)
+    return
+
+  def getEntryPrompt(self):
+    return 'Please enter file path for '+str(self.key)+': '
+
+  def getValue(self):
+    '''Returns the value. SHOULD MAKE THIS A PROPERTY'''
+    if not self.isValueSet():
+      checkInteractive(self.key)
+      return Arg.getValue(self)
+    return self.value
+
+  def setValue(self, value):
+    '''Set the value. SHOULD MAKE THIS A PROPERTY'''
+    import os
+    self.checkKey()
+    # Should check whether it is a well-formed path
+    if not isinstance(value, str):
+      raise TypeError('Invalid file: '+str(value)+' for key '+str(self.key))
+    value = os.path.expanduser(value)
+    value = os.path.abspath(value)
+    if self.mustExist and value and not os.path.isfile(value):
+      raise ValueError('Nonexistent file: '+str(value)+' for key '+str(self.key))
+    self.value = value
+    return
+
+class ArgFileList(Arg):
+  '''Arguments that represent file lists'''
+  def __init__(self, key, value = None, help = '', mustExist = 1, isTemporary = 0, deprecated = False):
+    self.mustExist = mustExist
+    Arg.__init__(self, key, value, help, isTemporary, deprecated)
+    return
+
+  def getEntryPrompt(self):
+    return 'Please enter file list for '+str(self.key)+': '
+
+  def getValue(self):
+    '''Returns the value. SHOULD MAKE THIS A PROPERTY'''
+    if not self.isValueSet():
+      checkInteractive(self.key)
+      return Arg.getValue(self)
+    return self.value
+
+  def setValue(self, value):
+    '''Set the value. SHOULD MAKE THIS A PROPERTY'''
+    import os
+    self.checkKey()
+    if not isinstance(value, list):
+      value = value.split(':')
+    # Should check whether it is a well-formed path
+    nvalue = []
+    for file in value:
+      if file:
+        nvalue.append(os.path.expanduser(file))
+    value = nvalue
+    for file in value:
+      if self.mustExist and not os.path.isfile(file):
+        raise ValueError('Invalid file: '+str(file)+' for key '+str(self.key))
     self.value = value
     return
 
@@ -491,12 +557,18 @@ class ArgDownload(Arg):
     except:
       raise TypeError('Invalid download value: '+str(value)+' for key '+str(self.key))
     if isinstance(value, str):
-      import urlparse
+      try:
+        import urlparse
+      except ImportError:
+        from urllib import parse as urlparse
       if not urlparse.urlparse(value)[0]: # how do we check if the URL is invalid?
         if os.path.isfile(value):
           value = 'file://'+os.path.abspath(value)
         elif os.path.isdir(value):
-          value = 'dir://'+os.path.abspath(value)
+          if os.path.isdir(os.path.join(value,'.git')):
+            value = 'git://'+os.path.abspath(value)
+          else:
+            value = 'dir://'+os.path.abspath(value)
         else:
           raise ValueError('Invalid download location: '+str(value)+' for key '+str(self.key))
     self.value = value

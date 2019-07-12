@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 configure_options = [
   '--download-xsdk',
@@ -7,6 +7,9 @@ configure_options = [
   '--download-cmake=1',
   '--with-clanguage=C++',
   '--with-debugging=1',
+  'COPTFLAGS=-g -O',
+  'FOPTFLAGS=-g -O',
+  'CXXOPTFLAGS=-g -O',
   '--with-shared-libraries=0',
 
   ]

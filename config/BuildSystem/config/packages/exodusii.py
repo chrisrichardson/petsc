@@ -3,7 +3,7 @@ import config.package
 class Configure(config.package.CMakePackage):
   def __init__(self, framework):
     config.package.CMakePackage.__init__(self, framework)
-    self.gitcommit         = 'd04c0c86152f2f0beb0c1f122d2e5d56ee31f34d'
+    self.gitcommit         = '4ff2234bba3a456aa834c872002188919dd2ba72'
     self.download          = ['git://https://github.com/gsjaardema/seacas.git','https://github.com/gsjaardema/seacas/archive/'+self.gitcommit+'.tar.gz']
     self.downloaddirnames  = ['seacas']
     self.functions         = ['ex_close']
@@ -57,6 +57,8 @@ class Configure(config.package.CMakePackage):
     args.append('-DTPL_ENABLE_CGNS:BOOL=OFF')
     args.append('-DNetCDF_DIR:PATH='+self.netcdf.directory)
     args.append('-DHDF5_DIR:PATH='+self.hdf5.directory)
+    args.append('-DPnetcdf_LIBRARY_DIRS:PATH='+os.path.join(self.pnetcdf.directory,'lib'))
+    args.append('-DPnetcdf_INCLUDE_DIRS:PATH='+os.path.join(self.pnetcdf.directory,'include'))
     if self.checkSharedLibrariesEnabled():
       args.append('-DBUILD_SHARED_LIBS:BOOL=ON')
     if self.compilerFlags.debugging:

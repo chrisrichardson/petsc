@@ -23,8 +23,6 @@ typedef struct {
 
     Level: intermediate
 
-.keywords: matrix, scatter, get
-
 .seealso: MatCreateScatter(), MatScatterSetVecScatter(), MATSCATTER
 @*/
 PetscErrorCode  MatScatterGetVecScatter(Mat mat,VecScatter *scatter)
@@ -280,7 +278,7 @@ PETSC_EXTERN PetscErrorCode MatCreate_Scatter(Mat A)
 /*@C
    MatCreateScatter - Creates a new matrix based on a VecScatter
 
-  Collective on MPI_Comm
+  Collective
 
    Input Parameters:
 +  comm - MPI communicator
@@ -304,8 +302,6 @@ PETSC_EXTERN PetscErrorCode MatCreate_Scatter(Mat A)
    for this matrix. This is not desirable..
 
 
-.keywords: matrix, scatter, create
-
 .seealso: MatScatterSetVecScatter(), MatScatterGetVecScatter(), MATSCATTER
 @*/
 PetscErrorCode  MatCreateScatter(MPI_Comm comm,VecScatter scatter,Mat *A)
@@ -328,7 +324,7 @@ PetscErrorCode  MatCreateScatter(MPI_Comm comm,VecScatter scatter,Mat *A)
 
     Input Parameters:
 +   mat - the scatter matrix
--   scatter - the scatter context create with VecScatterCreate() or VecScatterCreateWithData()
+-   scatter - the scatter context create with VecScatterCreate()
 
    Level: advanced
 

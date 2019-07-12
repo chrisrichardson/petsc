@@ -135,7 +135,7 @@ static PetscErrorCode TSGLLESchemeCreate(PetscInt p,PetscInt q,PetscInt r,PetscI
   scheme->s = s;
 
   ierr = PetscMalloc5(s,&scheme->c,s*s,&scheme->a,r*s,&scheme->b,r*s,&scheme->u,r*r,&scheme->v);CHKERRQ(ierr);
-  ierr = PetscMemcpy(scheme->c,c,s*sizeof(PetscScalar));CHKERRQ(ierr);
+  ierr = PetscArraycpy(scheme->c,c,s);CHKERRQ(ierr);
   for (j=0; j<s*s; j++) scheme->a[j] = (PetscAbsScalar(a[j]) < 1e-12) ? 0 : a[j];
   for (j=0; j<r*s; j++) scheme->b[j] = (PetscAbsScalar(b[j]) < 1e-12) ? 0 : b[j];
   for (j=0; j<s*r; j++) scheme->u[j] = (PetscAbsScalar(u[j]) < 1e-12) ? 0 : u[j];
@@ -620,7 +620,6 @@ static PetscErrorCode TSGLLECreate_IRKS(TS ts)
 
    Level: intermediate
 
-.keywords: TS, TSGLLE, set, type
 @*/
 PetscErrorCode  TSGLLESetType(TS ts,TSGLLEType type)
 {
@@ -1236,8 +1235,6 @@ $     -ts_gl_type my_scheme
 
    Level: advanced
 
-.keywords: TSGLLE, register
-
 .seealso: TSGLLERegisterAll()
 @*/
 PetscErrorCode  TSGLLERegister(const char sname[],PetscErrorCode (*function)(TS))
@@ -1274,8 +1271,6 @@ $     -ts_gl_accept_type my_scheme
 
    Level: advanced
 
-.keywords: TSGLLE, TSGLLEAcceptType, register
-
 .seealso: TSGLLERegisterAll()
 @*/
 PetscErrorCode  TSGLLEAcceptRegister(const char sname[],TSGLLEAcceptFunction function)
@@ -1294,8 +1289,6 @@ PetscErrorCode  TSGLLEAcceptRegister(const char sname[],TSGLLEAcceptFunction fun
 
   Level: advanced
 
-.keywords: TS, TSGLLE, register, all
-
 .seealso:  TSGLLERegisterDestroy()
 @*/
 PetscErrorCode  TSGLLERegisterAll(void)
@@ -1313,12 +1306,10 @@ PetscErrorCode  TSGLLERegisterAll(void)
 
 /*@C
   TSGLLEInitializePackage - This function initializes everything in the TSGLLE package. It is called
-  from PetscDLLibraryRegister() when using dynamic libraries, and on the first call to TSCreate_GLLE()
-  when using static libraries.
+  from TSInitializePackage().
 
   Level: developer
 
-.keywords: TS, TSGLLE, initialize, package
 .seealso: PetscInitialize()
 @*/
 PetscErrorCode  TSGLLEInitializePackage(void)
@@ -1339,7 +1330,6 @@ PetscErrorCode  TSGLLEInitializePackage(void)
 
   Level: developer
 
-.keywords: Petsc, destroy, package
 .seealso: PetscFinalize()
 @*/
 PetscErrorCode  TSGLLEFinalizePackage(void)

@@ -6,6 +6,9 @@ if __name__ == '__main__':
   sys.path.insert(0, os.path.abspath('config'))
   import configure
   configure_options = [
+    'COPTFLAGS=-g -O',
+    'FOPTFLAGS=-g -O',
+    'CXXOPTFLAGS=-g -O',
     '--download-suitesparse',
     '--download-mumps',
     '--download-scalapack',
@@ -22,6 +25,7 @@ if __name__ == '__main__':
     '--download-netcdf',
     '--download-parmetis',
     '--download-triangle',
+    '--download-p4est',
     '--with-cuda',
     '--with-shared-libraries',
   ]

@@ -10,7 +10,6 @@ static PetscBool  VecScatterPackageInitialized = PETSC_FALSE;
 
   Level: developer
 
-.keywords: Petsc, destroy, package
 .seealso: PetscFinalize()
 @*/
 PetscErrorCode VecScatterFinalizePackage(void)
@@ -26,12 +25,12 @@ PetscErrorCode VecScatterFinalizePackage(void)
 
 /*@C
       VecScatterInitializePackage - This function initializes everything in the VecScatter package. It is called
-  from PetscDLLibraryRegister() when using dynamic libraries, and on the first call to VecScatterCreateXXXX()
-  when using static libraries.
+  on the first call to VecScatterCreateXXXX().
 
   Level: developer
 
-.keywords: Vec, initialize, package
+  Developers Note: this does not seem to get called directly when useing dynamic libraries.
+
 .seealso: PetscInitialize()
 @*/
 PetscErrorCode VecScatterInitializePackage(void)
@@ -72,7 +71,6 @@ PetscErrorCode VecScatterInitializePackage(void)
 
   Level: advanced
 
-.keywords: Vec, register, all
 .seealso:  VecScatterRegister(), VecScatterRegisterDestroy(), VecScatterRegister()
 @*/
 PetscErrorCode VecScatterRegisterAll(void)
@@ -85,6 +83,7 @@ PetscErrorCode VecScatterRegisterAll(void)
 
   ierr = VecScatterRegister(VECSCATTERSEQ,        VecScatterCreate_Seq);CHKERRQ(ierr);
   ierr = VecScatterRegister(VECSCATTERMPI1,       VecScatterCreate_MPI1);CHKERRQ(ierr);
+  ierr = VecScatterRegister(VECSCATTERSF,         VecScatterCreate_SF);CHKERRQ(ierr);
 #if defined(PETSC_HAVE_MPI_WIN_CREATE_FEATURE)
   ierr = VecScatterRegister(VECSCATTERMPI3,       VecScatterCreate_MPI3);CHKERRQ(ierr);
   ierr = VecScatterRegister(VECSCATTERMPI3NODE,   VecScatterCreate_MPI3Node);CHKERRQ(ierr);

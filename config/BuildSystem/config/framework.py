@@ -41,7 +41,6 @@ MPI was indeed found using self.mpi.found. When HYPRE requires the list of
 MPI libraries in order to link a test object, the module can use self.mpi.lib.
 '''
 from __future__ import print_function
-import user
 import script
 import config.base
 import time
@@ -54,19 +53,13 @@ from functools import reduce
 # workarround for python2.2 which does not have pathsep
 if not hasattr(os.path,'pathsep'): os.path.pathsep=':'
 
-import cPickle
+import pickle
 
 try:
   from hashlib import md5 as new_md5
 except ImportError:
   from md5 import new as new_md5
 
-
-try:
-  enumerate([0, 1])
-except NameError:
-  def enumerate(l):
-    return zip(range(len(l)), l)
 
 class Framework(config.base.Configure, script.LanguageProcessor):
   '''This needs to manage configure information in itself just as Builder manages it for configurations'''
@@ -92,6 +85,7 @@ class Framework(config.base.Configure, script.LanguageProcessor):
     self.cHeader         = 'matt_fix.h'
     self.headerPrefix    = ''
     self.substPrefix     = ''
+    self.pkgheader       = ''
     self.warningRE       = re.compile('warning', re.I)
     if not nargs.Arg.findArgument('debugSections', self.clArgs):
       self.argDB['debugSections'] = ['screen']
@@ -207,7 +201,7 @@ class Framework(config.base.Configure, script.LanguageProcessor):
     '''Change titles and setup all children'''
     argDB = script.Script.setupArguments(self, argDB)
 
-    self.help.title = 'Configure Help\n   Comma separated lists should be given between [] (use \[ \] in tcsh/csh)\n      For example: --with-mpi-lib=\[/usr/local/lib/libmpich.a,/usr/local/lib/libpmpich.a\]\n   Options beginning with --known- are to provide values you already know\n      For example:--known-endian=big\n   Options beginning with --with- indicate that you are requesting something\n      For example: --with-clanguage=c++\n   <prog> means a program name or a full path to a program\n      For example:--with-cmake=/Users/bsmith/bin/cmake\n   <bool> means a boolean, use either 0 or 1\n   <dir> means a directory\n      For example: --with-packages-download-dir=/Users/bsmith/Downloads\n   For packages use --with-PACKAGE-dir=<dir> OR\n      --with-PACKAGE-include=<dir> --with-PACKAGE-lib=<lib> OR --download-PACKAGE'
+    self.help.title = 'Configure Help\n   Comma separated lists should be given between [] (use \[ \] in tcsh/csh)\n      For example: --with-mpi-lib=\[/usr/local/lib/libmpich.a,/usr/local/lib/libpmpich.a\]\n   Options beginning with --known- are to provide values you already know\n    Options beginning with --with- indicate that you are requesting something\n      For example: --with-clanguage=c++\n   <prog> means a program name or a full path to a program\n      For example:--with-cmake=/Users/bsmith/bin/cmake\n   <bool> means a boolean, use either 0 or 1\n   <dir> means a directory\n      For example: --with-packages-download-dir=/Users/bsmith/Downloads\n   For packages use --with-PACKAGE-dir=<dir> OR\n      --with-PACKAGE-include=<dir> --with-PACKAGE-lib=<lib> OR --download-PACKAGE'
     self.actions.title = 'Configure Actions\n   These are the actions performed by configure on the filesystem'
 
     for child in self.childGraph.vertices:
@@ -240,8 +234,24 @@ class Framework(config.base.Configure, script.LanguageProcessor):
       self.log.write('**** ' + self.cHeader + ' ****\n')
       self.outputCHeader(self.log)
       self.actions.addArgument('Framework', 'File creation', 'Created C specific configure header '+self.cHeader)
+    if self.pkgheader:
+      self.outputPkgHeader(self.pkgheader)
+      self.log.write('**** ' + self.pkgheader + ' ****\n')
+      self.outputPkgHeader(self.log)
+      self.actions.addArgument('Framework', 'File creation', 'Created configure pkg header '+self.pkgheader)
     self.log.write('\n')
     return
+
+  def saveHash(self):
+    '''Saves the hash for configure (created in arch.py)'''
+    if hasattr(self,'hash') and hasattr(self,'hashfile'):
+       self.logPrint('Attempting to save configure hash file: '+self.hashfile)
+       try:
+         with open(self.hashfile, 'w') as f:
+           f.write(self.hash)
+       except:
+         self.logPrint('Unable to save configure hash file: '+self.hashfile)
+
 
   def cleanup(self):
     self.actions.output(self.log)
@@ -353,7 +363,7 @@ class Framework(config.base.Configure, script.LanguageProcessor):
         dependency = depPath
       else:
         dependency = os.path.dirname(dependency.__file__)
-    self.dependencies[dependency] = new_md5(cPickle.dumps(framework)).hexdigest()
+    self.dependencies[dependency] = new_md5(pickle.dumps(framework)).hexdigest()
     self.logPrint('Added configure dependency from '+dependency+'('+str(self.dependencies[dependency])+')')
     for child in framework.childGraph.vertices:
       child.argDB = self.argDB
@@ -366,7 +376,7 @@ class Framework(config.base.Configure, script.LanguageProcessor):
   def updatePackageDependencies(self):
     for dependency, digest in self.dependencies.items():
       framework = self.loadFramework(dependency)
-      if digest == new_md5(cPickle.dumps(framework)).hexdigest():
+      if digest == new_md5(pickle.dumps(framework)).hexdigest():
         continue
       self.logPrint('Configure dependency from '+dependency+' has changed. Reloading...')
       for child in framework.childGraph.vertices:
@@ -400,16 +410,16 @@ class Framework(config.base.Configure, script.LanguageProcessor):
       output = ''
     lines = output.splitlines()
     # Intel
-    lines = filter(lambda s: s.find("icc: command line remark #10148: option '-i-dynamic' not supported") < 0, lines)
+    lines = [s for s in lines if s.find("icc: command line remark #10148: option '-i-dynamic' not supported") < 0]
     # IBM:
-    lines = filter(lambda s: not s.startswith('cc_r:'), lines)
+    lines = [s for s in lines if not s.startswith('cc_r:')]
     # PGI: Ignore warning about temporary license
-    lines = filter(lambda s: s.find('license.dat') < 0, lines)
+    lines = [s for s in lines if s.find('license.dat') < 0]
     # Cray XT3
-    lines = filter(lambda s: s.find('INFO: catamount target') < 0, lines)
-    lines = filter(lambda s: s.find('INFO: linux target') < 0, lines)
+    lines = [s for s in lines if s.find('INFO: catamount target') < 0]
+    lines = [s for s in lines if s.find('INFO: linux target') < 0]
     # Lahey/Fujitsu
-    lines = filter(lambda s: s.find('Encountered 0 errors') < 0, lines)
+    lines = [s for s in lines if s.find('Encountered 0 errors') < 0]
     output = reduce(lambda s, t: s+t, lines, '')
     log.write("Preprocess stderr after filtering:"+output+":\n")
     return output
@@ -420,6 +430,7 @@ class Framework(config.base.Configure, script.LanguageProcessor):
     if output.find('warning #264: floating-point value does not fit in required floating-point type') >= 0: return output
     if output.find('warning: ISO C90 does not support') >= 0: return output
     if output.find('warning: ISO C does not support') >= 0: return output
+    if output.find('warning #2650: attributes ignored here') >= 0: return output
     if output.find('Warning: attribute visibility is unsupported and will be skipped') >= 0: return output
     if output.find('(E) Invalid statement found within an interface block. Executable statement, statement function or syntax error encountered.') >= 0: return output
     elif self.argDB['ignoreCompileOutput']:
@@ -428,29 +439,29 @@ class Framework(config.base.Configure, script.LanguageProcessor):
       lines = output.splitlines()
       if self.argDB['ignoreWarnings']:
         # EXCEPT warnings that those bastards say we want
-        extraLines = filter(lambda s: s.find('implicit declaration of function') >= 0, lines)
-        lines = filter(lambda s: not self.warningRE.search(s), lines)
-        lines = filter(lambda s: s.find('In file included from') < 0, lines)
-        lines = filter(lambda s: s.find('from ') < 0, lines)
+        extraLines = [s for s in lines if s.find('implicit declaration of function') >= 0]
+        lines = [s for s in lines if not self.warningRE.search(s)]
+        lines = [s for s in lines if s.find('In file included from') < 0]
+        lines = [s for s in lines if s.find('from ') < 0]
         lines += extraLines
       # GCC: Ignore headers to toplevel
-      lines = filter(lambda s: s.find('At the top level') < 0, lines)
+      lines = [s for s in lines if s.find('At the top level') < 0]
       # GCC: Ignore headers to functions
-      lines = filter(lambda s: s.find(': In function') < 0, lines)
+      lines = [s for s in lines if s.find(': In function') < 0]
       # GCC: Ignore stupid warning about builtins
-      lines = filter(lambda s: s.find('warning: conflicting types for built-in function') < 0, lines)
+      lines = [s for s in lines if s.find('warning: conflicting types for built-in function') < 0]
       # GCC: Ignore stupid warning about unused variables
-      lines = filter(lambda s: s.find('warning: unused variable') < 0, lines)
+      lines = [s for s in lines if s.find('warning: unused variable') < 0]
       # Intel
-      lines = filter(lambda s: s.find("icc: command line remark #10148: option '-i-dynamic' not supported") < 0, lines)
+      lines = [s for s in lines if s.find("icc: command line remark #10148: option '-i-dynamic' not supported") < 0]
       # PGI: Ignore warning about temporary license
-      lines = filter(lambda s: s.find('license.dat') < 0, lines)
+      lines = [s for s in lines if s.find('license.dat') < 0]
       # Cray XT3
-      lines = filter(lambda s: s.find('INFO: catamount target') < 0, lines)
-      lines = filter(lambda s: s.find('INFO: linux target') < 0, lines)
-      lines = filter(lambda s: s.find('Successful compile:') < 0, lines)
+      lines = [s for s in lines if s.find('INFO: catamount target') < 0]
+      lines = [s for s in lines if s.find('INFO: linux target') < 0]
+      lines = [s for s in lines if s.find('Successful compile:') < 0]
       # Lahey/Fujitsu
-      lines = filter(lambda s: s.find('Encountered 0 errors') < 0, lines)
+      lines = [s for s in lines if s.find('Encountered 0 errors') < 0]
       output = reduce(lambda s, t: s+t, lines, '')
     return output
 
@@ -462,14 +473,14 @@ class Framework(config.base.Configure, script.LanguageProcessor):
       hasIbmCrap = output.find('in statically linked applications requires at runtime the shared libraries from the glibc version used for linking') >= 0
       lines = output.splitlines()
       if self.argDB['ignoreWarnings'] and not hasIbmCrap:
-        lines = filter(lambda s: not self.warningRE.search(s), lines)
+        lines = [s for s in lines if not self.warningRE.search(s)]
       # PGI: Ignore warning about temporary license
-      lines = filter(lambda s: s.find('license.dat') < 0, lines)
+      lines = [s for s in lines if s.find('license.dat') < 0]
       # Cray XT3
-      lines = filter(lambda s: s.find('INFO: catamount target') < 0, lines)
-      lines = filter(lambda s: s.find('INFO: linux target') < 0, lines)
+      lines = [s for s in lines if s.find('INFO: catamount target') < 0]
+      lines = [s for s in lines if s.find('INFO: linux target') < 0]
       # Lahey/Fujitsu
-      lines = filter(lambda s: s.find('Encountered 0 errors') < 0, lines)
+      lines = [s for s in lines if s.find('Encountered 0 errors') < 0]
       output = reduce(lambda s, t: s+t, lines, '')
     return output
 
@@ -552,12 +563,12 @@ class Framework(config.base.Configure, script.LanguageProcessor):
 
   def substituteFile(self, inName, outName):
     '''Carry out substitution on the file "inName", creating "outName"'''
-    inFile  = file(inName)
+    inFile  = open(inName)
     if os.path.dirname(outName):
       if not os.path.exists(os.path.dirname(outName)):
         os.makedirs(os.path.dirname(outName))
     if self.file_create_pause: time.sleep(1)
-    outFile = file(outName, 'w')
+    outFile = open(outName, 'w')
     for line in inFile:
       outFile.write(self.substRE.sub(self.substituteName, line))
     outFile.close()
@@ -685,6 +696,40 @@ class Framework(config.base.Configure, script.LanguageProcessor):
         self.outputDefine(f, self.getFullDefineName(child, pair[0], prefix), pair[1])
     return
 
+  def outputPkgVersion(self, f, child):
+    '''If the child contains a tuple named "version_tuple", the entries are output in the config package header.'''
+    if not hasattr(child, 'version_tuple') or not isinstance(child.version_tuple, tuple): return
+    if not child.version_tuple: return
+    vt = child.version_tuple
+    prefix = 'PETSC_PKG_'+child.name.upper()+('_')
+    ss = ('VERSION_MAJOR','VERSION_MINOR','VERSION_SUBMINOR')
+    # output versioning tuple
+    for t in range(min(len(vt),3)):
+      f.write('#define '+prefix+ss[t]+(' ')+str(vt[t])+'\n')
+    while (t < 2):
+      t = t+1
+      f.write('#define '+prefix+ss[t]+(' 0\n'))
+
+    # output macros following petscversion.h style
+    f.write('#define '+prefix+'VERSION_ '+prefix+'VERSION_EQ\n\n')
+    f.write('#define '+prefix+'VERSION_EQ(MAJOR,MINOR,SUBMINOR)         \\\n')
+    f.write('      (('+prefix+'VERSION_MAJOR    == (MAJOR)) &&          \\\n')
+    f.write('       ('+prefix+'VERSION_MINOR    == (MINOR)) &&          \\\n')
+    f.write('       ('+prefix+'VERSION_SUBMINOR == (SUBMINOR)))\n\n')
+    f.write('#define '+prefix+'VERSION_LT(MAJOR,MINOR,SUBMINOR)         \\\n')
+    f.write('       ('+prefix+'VERSION_MAJOR  < (MAJOR) ||              \\\n')
+    f.write('        ('+prefix+'VERSION_MAJOR == (MAJOR) &&             \\\n')
+    f.write('         ('+prefix+'VERSION_MINOR  < (MINOR) ||            \\\n')
+    f.write('          ('+prefix+'VERSION_MINOR == (MINOR) &&           \\\n')
+    f.write('           ('+prefix+'VERSION_SUBMINOR  < (SUBMINOR))))))\n\n')
+    f.write('#define '+prefix+'VERSION_LE(MAJOR,MINOR,SUBMINOR)         \\\n')
+    f.write('       ('+prefix+'VERSION_LT(MAJOR,MINOR,SUBMINOR) ||      \\\n')
+    f.write('        '+prefix+'VERSION_EQ(MAJOR,MINOR,SUBMINOR))\n\n')
+    f.write('#define '+prefix+'VERSION_GT(MAJOR,MINOR,SUBMINOR)         \\\n')
+    f.write('       ( 0 == '+prefix+'VERSION_LE(MAJOR,MINOR,SUBMINOR))\n\n')
+    f.write('#define '+prefix+'VERSION_GE(MAJOR,MINOR,SUBMINOR)         \\\n')
+    f.write('       ( 0 == '+prefix+'VERSION_LT(MAJOR,MINOR,SUBMINOR))\n\n')
+
   def outputTypedefs(self, f, child):
     '''If the child contains a dictionary named "typedefs", the entries are output as typedefs in the config header.'''
     if not hasattr(child, 'typedefs') or not isinstance(child.typedefs, dict): return
@@ -707,7 +752,7 @@ class Framework(config.base.Configure, script.LanguageProcessor):
 
   def outputMakeMacroHeader(self, name):
     '''Write the make configuration header (bmake file)'''
-    if isinstance(name, file):
+    if hasattr(name, 'close'):
       f = name
       filename = 'Unknown'
     else:
@@ -715,18 +760,18 @@ class Framework(config.base.Configure, script.LanguageProcessor):
       if dir and not os.path.exists(dir):
         os.makedirs(dir)
       if self.file_create_pause: time.sleep(1)
-      f = file(name, 'w')
+      f = open(name, 'w')
       filename = os.path.basename(name)
     self.outputMakeMacros(f, self)
     for child in self.childGraph.vertices:
       self.outputMakeMacros(f, child)
-    if not isinstance(name, file):
+    if not hasattr(name, 'close'):
       f.close()
     return
 
   def outputMakeRuleHeader(self, name):
     '''Write the make configuration header (bmake file)'''
-    if isinstance(name, file):
+    if hasattr(name, 'close'):
       f = name
       filename = 'Unknown'
     else:
@@ -734,18 +779,18 @@ class Framework(config.base.Configure, script.LanguageProcessor):
       if dir and not os.path.exists(dir):
         os.makedirs(dir)
       if self.file_create_pause: time.sleep(1)
-      f = file(name, 'w')
+      f = open(name, 'w')
       filename = os.path.basename(name)
     self.outputMakeRules(f, self)
     for child in self.childGraph.vertices:
       self.outputMakeRules(f, child)
-    if not isinstance(name, file):
+    if not hasattr(name, 'close'):
       f.close()
     return
 
   def outputHeader(self, name, prefix = None):
     '''Write the configuration header'''
-    if isinstance(name, file):
+    if hasattr(name, 'close'):
       f = name
       filename = 'Unknown'
     else:
@@ -753,7 +798,7 @@ class Framework(config.base.Configure, script.LanguageProcessor):
       if dir and not os.path.exists(dir):
         os.makedirs(dir)
       if self.file_create_pause: time.sleep(1)
-      f = file(name, 'w')
+      f = open(name, 'w')
       filename = os.path.basename(name)
     guard = 'INCLUDED_'+filename.upper().replace('.', '_')
     f.write('#if !defined('+guard+')\n')
@@ -766,13 +811,13 @@ class Framework(config.base.Configure, script.LanguageProcessor):
     if hasattr(self, 'headerBottom'):
       f.write(str(self.headerBottom)+'\n')
     f.write('#endif\n')
-    if not isinstance(name, file):
+    if not hasattr(name, 'close'):
       f.close()
     return
 
-  def outputCHeader(self, name):
-    '''Write the C specific configuration header'''
-    if isinstance(name, file):
+  def outputPkgHeader(self, name, prefix = None):
+    '''Write the packages configuration header'''
+    if hasattr(name, 'close'):
       f = name
       filename = 'Unknown'
     else:
@@ -780,7 +825,34 @@ class Framework(config.base.Configure, script.LanguageProcessor):
       if dir and not os.path.exists(dir):
         os.makedirs(dir)
       if self.file_create_pause: time.sleep(1)
-      f = file(name, 'w')
+      f = open(name, 'w')
+      filename = os.path.basename(name)
+    guard = 'INCLUDED_'+filename.upper().replace('.', '_')
+    f.write('#if !defined('+guard+')\n')
+    f.write('#define '+guard+'\n\n')
+    if hasattr(self, 'headerTop'):
+      f.write(str(self.headerTop)+'\n')
+    self.outputPkgVersion(f, self)
+    for child in self.childGraph.vertices:
+      self.outputPkgVersion(f, child)
+    if hasattr(self, 'headerBottom'):
+      f.write(str(self.headerBottom)+'\n')
+    f.write('#endif\n')
+    if not hasattr(name, 'close'):
+      f.close()
+    return
+
+  def outputCHeader(self, name):
+    '''Write the C specific configuration header'''
+    if hasattr(name, 'close'):
+      f = name
+      filename = 'Unknown'
+    else:
+      dir = os.path.dirname(name)
+      if dir and not os.path.exists(dir):
+        os.makedirs(dir)
+      if self.file_create_pause: time.sleep(1)
+      f = open(name, 'w')
       filename = os.path.basename(name)
     guard = 'INCLUDED_'+filename.upper().replace('.', '_')
     f.write('#if !defined('+guard+')\n')
@@ -806,7 +878,7 @@ class Framework(config.base.Configure, script.LanguageProcessor):
       self.outputPrototypes(f, child, 'C')
     f.write('#endif\n')
     f.write('#endif\n')
-    if not isinstance(name, file):
+    if not hasattr(name, 'close'):
       f.close()
     return
 
@@ -814,7 +886,7 @@ class Framework(config.base.Configure, script.LanguageProcessor):
     import nargs
     args = self.clArgs[:]
     for arg in omitArgs:
-      args = filter(lambda a: not nargs.Arg.parseArgument(a)[0] == arg, args)
+      args = [a for a in args if not nargs.Arg.parseArgument(a)[0] == arg]
     for a, arg in enumerate(args):
       parts = arg.split('=',1)
       if len(parts) == 2 and (' ' in parts[1] or '[' in parts[1]):
@@ -897,7 +969,7 @@ class Framework(config.base.Configure, script.LanguageProcessor):
       body.extend(self.batchCleanup)
       # pretty print repr(args.values())
       for itm in args:
-        if (itm != '--configModules=PETSc.Configure') and (itm != '--optionsModule=config.compilerOptions'):
+        if (itm not in ['--configModules=PETSc.Configure','--optionsModule=config.compilerOptions','--force']):
           body.append('fprintf(output,"  \'%s\',\\n","'+str(itm).replace('"', "'")+'");')
       body.append('fprintf(output,"]");')
       driver = ['fprintf(output, "\\nif __name__ == \'__main__\':',
@@ -1012,8 +1084,8 @@ class Framework(config.base.Configure, script.LanguageProcessor):
         if ret:
           out += '\n'+msg+'\n'+se+'\n'
           try:
-            import sys,traceback,cStringIO
-            tb = cStringIO.StringIO()
+            import sys,traceback,io
+            tb = io.StringIO()
             traceback.print_tb(sys.exc_info()[2], file = tb)
             out += tb.getvalue()
             tb.close()
@@ -1093,5 +1165,6 @@ class Framework(config.base.Configure, script.LanguageProcessor):
     if self.argDB['with-batch']:
       self.configureBatch()
     self.dumpConfFiles()
+    self.saveHash()
     self.cleanup()
     return 1

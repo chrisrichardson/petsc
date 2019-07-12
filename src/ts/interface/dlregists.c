@@ -1,4 +1,3 @@
-
 #include <petsc/private/tsimpl.h>
 
 static PetscBool TSPackageInitialized = PETSC_FALSE;
@@ -8,7 +7,6 @@ static PetscBool TSPackageInitialized = PETSC_FALSE;
 
   Level: developer
 
-.keywords: Petsc, destroy, package, mathematica
 .seealso: PetscFinalize()
 @*/
 PetscErrorCode  TSFinalizePackage(void)
@@ -25,12 +23,11 @@ PetscErrorCode  TSFinalizePackage(void)
 
 /*@C
   TSInitializePackage - This function initializes everything in the TS package. It is called
-  from PetscDLLibraryRegister() when using dynamic libraries, and on the first call to TSCreate()
-  when using static libraries.
+  from PetscDLLibraryRegister_petscts() when using dynamic libraries, and on the first call to TSCreate()
+  when using shared or static libraries.
 
   Level: developer
 
-.keywords: TS, initialize, package
 .seealso: PetscInitialize()
 @*/
 PetscErrorCode  TSInitializePackage(void)
@@ -56,6 +53,7 @@ PetscErrorCode  TSInitializePackage(void)
   ierr = PetscClassIdRegister("TS",&TS_CLASSID);CHKERRQ(ierr);
   ierr = PetscClassIdRegister("DMTS",&DMTS_CLASSID);CHKERRQ(ierr);
   ierr = PetscClassIdRegister("TSTrajectory",&TSTRAJECTORY_CLASSID);CHKERRQ(ierr);
+
   /* Register Constructors */
   ierr = TSRegisterAll();CHKERRQ(ierr);
   ierr = TSTrajectoryRegisterAll();CHKERRQ(ierr);
@@ -67,6 +65,7 @@ PetscErrorCode  TSInitializePackage(void)
   ierr = PetscLogEventRegister("TSAdjointStep",   TS_CLASSID,&TS_AdjointStep);CHKERRQ(ierr);
   ierr = PetscLogEventRegister("TSTrajectorySet", TSTRAJECTORY_CLASSID,&TSTrajectory_Set);CHKERRQ(ierr);
   ierr = PetscLogEventRegister("TSTrajectoryGet", TSTRAJECTORY_CLASSID,&TSTrajectory_Get);CHKERRQ(ierr);
+  ierr = PetscLogEventRegister("TSTrajGetVecs",   TSTRAJECTORY_CLASSID,&TSTrajectory_GetVecs);CHKERRQ(ierr);
   ierr = PetscLogEventRegister("TSTrajDiskWrite", TSTRAJECTORY_CLASSID,&TSTrajectory_DiskWrite);CHKERRQ(ierr);
   ierr = PetscLogEventRegister("TSTrajDiskRead",  TSTRAJECTORY_CLASSID,&TSTrajectory_DiskRead);CHKERRQ(ierr);
   ierr = PetscLogEventRegister("TSPseudoCmptTStp",TS_CLASSID,&TS_PseudoComputeTimeStep);CHKERRQ(ierr);
@@ -115,6 +114,4 @@ PETSC_EXTERN PetscErrorCode PetscDLLibraryRegister_petscts(void)
   ierr = TSInitializePackage();CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
-
-
 #endif /* PETSC_HAVE_DYNAMIC_LIBRARIES */

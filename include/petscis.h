@@ -2,8 +2,8 @@
    An index set is a generalization of a subset of integers.  Index sets
    are used for defining scatters and gathers.
 */
-#if !defined(__PETSCIS_H)
-#define __PETSCIS_H
+#if !defined(PETSCIS_H)
+#define PETSCIS_H
 #include <petscsys.h>
 #include <petscsftypes.h>
 #include <petscistypes.h>    /*I  "petscis.h" I*/
@@ -101,6 +101,7 @@ PETSC_EXTERN PetscErrorCode ISEmbed(IS,IS,PetscBool,IS*);
 PETSC_EXTERN PetscErrorCode ISSortPermutation(IS,PetscBool,IS*);
 PETSC_EXTERN PetscErrorCode ISOnComm(IS,MPI_Comm,PetscCopyMode,IS*);
 PETSC_EXTERN PetscErrorCode ISRenumber(IS,IS,PetscInt*,IS*);
+PETSC_EXTERN PetscErrorCode ISCreateSubIS(IS,IS,IS*);
 
 /* --------------------------------------------------------------------------*/
 PETSC_EXTERN PetscClassId IS_LTOGM_CLASSID;
@@ -190,8 +191,8 @@ PETSC_EXTERN PetscErrorCode ISColoringCreate(MPI_Comm,PetscInt,PetscInt,const IS
 PETSC_EXTERN PetscErrorCode ISColoringDestroy(ISColoring*);
 PETSC_EXTERN PetscErrorCode ISColoringView(ISColoring,PetscViewer);
 PETSC_EXTERN PetscErrorCode ISColoringViewFromOptions(ISColoring,PetscObject,const char[]);
-PETSC_EXTERN PetscErrorCode ISColoringGetIS(ISColoring,PetscInt*,IS*[]);
-PETSC_EXTERN PetscErrorCode ISColoringRestoreIS(ISColoring,IS*[]);
+PETSC_EXTERN PetscErrorCode ISColoringGetIS(ISColoring,PetscCopyMode,PetscInt*,IS*[]);
+PETSC_EXTERN PetscErrorCode ISColoringRestoreIS(ISColoring,PetscCopyMode,IS*[]);
 PETSC_EXTERN PetscErrorCode ISColoringReference(ISColoring);
 PETSC_EXTERN PetscErrorCode ISColoringSetType(ISColoring,ISColoringType);
 
@@ -309,7 +310,13 @@ PETSC_EXTERN PetscErrorCode PetscLayoutGetRange(PetscLayout,PetscInt *,PetscInt 
 PETSC_EXTERN PetscErrorCode PetscLayoutGetRanges(PetscLayout,const PetscInt *[]);
 PETSC_EXTERN PetscErrorCode PetscLayoutCompare(PetscLayout,PetscLayout,PetscBool*);
 PETSC_EXTERN PetscErrorCode PetscLayoutSetISLocalToGlobalMapping(PetscLayout,ISLocalToGlobalMapping);
+PETSC_EXTERN PetscErrorCode PetscLayoutMapLocal(PetscLayout,PetscInt,const PetscInt[],PetscInt*,PetscInt**,PetscInt**);
 PETSC_EXTERN PetscErrorCode PetscSFSetGraphLayout(PetscSF,PetscLayout,PetscInt,const PetscInt*,PetscCopyMode,const PetscInt*);
+
+/* Generic HDF5 I/O */
+#if defined(PETSC_HAVE_HDF5)
+PETSC_EXTERN PetscErrorCode PetscViewerHDF5ReadSizes(PetscViewer, const char[], PetscInt *, PetscInt *);
+#endif
 
 PETSC_EXTERN PetscClassId PETSC_SECTION_CLASSID;
 
@@ -372,6 +379,7 @@ PETSC_EXTERN PetscErrorCode PetscSectionPermute(PetscSection, IS, PetscSection *
 PETSC_EXTERN PetscErrorCode PetscSectionGetField(PetscSection, PetscInt, PetscSection *);
 PETSC_EXTERN PetscErrorCode PetscSectionSetUseFieldOffsets(PetscSection, PetscBool);
 PETSC_EXTERN PetscErrorCode PetscSectionGetUseFieldOffsets(PetscSection, PetscBool *);
+PETSC_EXTERN PetscErrorCode PetscSectionExtractDofsFromArray(PetscSection, MPI_Datatype, const void *, IS, PetscSection *, void *[]);
 
 PETSC_EXTERN PetscErrorCode PetscSectionSetClosureIndex(PetscSection, PetscObject, PetscSection, IS);
 PETSC_EXTERN PetscErrorCode PetscSectionGetClosureIndex(PetscSection, PetscObject, PetscSection *, IS *);

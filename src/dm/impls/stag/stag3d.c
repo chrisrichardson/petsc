@@ -8,14 +8,14 @@
 
   Input Parameters:
 + comm - MPI communicator
-. bndx,bndy - boundary type: DM_BOUNDARY_NONE, DM_BOUNDARY_PERIODIC, or DM_BOUNDARY_GHOSTED
+. bndx,bndy,bndz - boundary type: DM_BOUNDARY_NONE, DM_BOUNDARY_PERIODIC, or DM_BOUNDARY_GHOSTED
 . M,N,P - global number of grid points in x,y directions
 . m,n,p - number of ranks in the x,y directions (may be PETSC_DECIDE)
 . dof0 - number of degrees of freedom per vertex/point/node/0-cell
 . dof1 - number of degrees of freedom per edge/1-cell
 . dof2 - number of degrees of freedom per face/2-cell
 . dof3 - number of degrees of freedom per element/3-cell
-. stencilType - ghost/halo region type: DMSTAG_STENCIL_BOX or DMSTAG_STENCIL_NONE
+. stencilType - ghost/halo region type: DMSTAG_STENCIL_NONE, DMSTAG_STENCIL_BOX, or DMSTAG_STENCIL_STAR
 . stencilWidth - width, in elements, of halo/ghost region
 - lx,ly,lz - array sof local x,y,z element counts, of length equal to m,n,p, summing to M,N,P
 
@@ -42,7 +42,7 @@
 
   Level: beginner
 
-.seealso: DMSTAG, DMStagCreate2d(), DMStagCreate3d(), DMDestroy(), DMView(), DMCreateGlobalVector(), DMCreateLocalVector(), DMLocalToGlobalBegin()
+.seealso: DMSTAG, DMStagCreate1d(), DMStagCreate2d(), DMDestroy(), DMView(), DMCreateGlobalVector(), DMCreateLocalVector(), DMLocalToGlobalBegin()
 @*/
 PETSC_EXTERN PetscErrorCode DMStagCreate3d(MPI_Comm comm,DMBoundaryType bndx,DMBoundaryType bndy,DMBoundaryType bndz,PetscInt M,PetscInt N,PetscInt P,PetscInt m,PetscInt n,PetscInt p,PetscInt dof0,PetscInt dof1,PetscInt dof2,PetscInt dof3,DMStagStencilType stencilType,PetscInt stencilWidth,const PetscInt lx[],const PetscInt ly[],const PetscInt lz[],DM* dm)
 {
@@ -863,7 +863,7 @@ static PetscErrorCode DMStagSetUpBuildScatter_3d(DM dm,const PetscInt *globalOff
   }
 
   /* Check stencil type */
-  if (stag->stencilType != DMSTAG_STENCIL_BOX && stag->stencilType != DMSTAG_STENCIL_BOX && stag->stencilType != DMSTAG_STENCIL_STAR) SETERRQ1(PetscObjectComm((PetscObject)dm),PETSC_ERR_SUP,"Unsupported stencil type %s",DMStagStencilTypes[stag->stencilType]);
+  if (stag->stencilType != DMSTAG_STENCIL_NONE && stag->stencilType != DMSTAG_STENCIL_BOX && stag->stencilType != DMSTAG_STENCIL_STAR) SETERRQ1(PetscObjectComm((PetscObject)dm),PETSC_ERR_SUP,"Unsupported stencil type %s",DMStagStencilTypes[stag->stencilType]);
   if (stag->stencilType == DMSTAG_STENCIL_NONE && stag->stencilWidth != 0) SETERRQ(PetscObjectComm((PetscObject)dm),PETSC_ERR_SUP,"DMStag 3d setup requires stencil width 0 with stencil type none");
   star = (PetscBool)(stag->stencilType == DMSTAG_STENCIL_STAR);
 
@@ -1541,7 +1541,7 @@ static PetscErrorCode DMStagSetUpBuildScatter_3d(DM dm,const PetscInt *globalOff
     ierr = ISCreateGeneral(PetscObjectComm((PetscObject)dm),entriesToTransferTotal,idxGlobal,PETSC_OWN_POINTER,&isGlobal);CHKERRQ(ierr);
     ierr = VecCreateMPIWithArray(PetscObjectComm((PetscObject)dm),1,stag->entries,PETSC_DECIDE,NULL,&global);CHKERRQ(ierr);
     ierr = VecCreateSeqWithArray(PETSC_COMM_SELF,stag->entriesPerElement,stag->entriesGhost,NULL,&local);CHKERRQ(ierr);
-    ierr = VecScatterCreateWithData(global,isGlobal,local,isLocal,&stag->gtol);CHKERRQ(ierr);
+    ierr = VecScatterCreate(global,isGlobal,local,isLocal,&stag->gtol);CHKERRQ(ierr);
     ierr = VecDestroy(&global);CHKERRQ(ierr);
     ierr = VecDestroy(&local);CHKERRQ(ierr);
     ierr = ISDestroy(&isLocal);CHKERRQ(ierr);  /* frees idxLocal */
@@ -1565,7 +1565,7 @@ static PetscErrorCode DMStagSetUpBuildL2G_3d(DM dm,const PetscInt *globalOffsets
   PetscFunctionBegin;
 
   /* Check stencil type */
-  if (stag->stencilType != DMSTAG_STENCIL_BOX && stag->stencilType != DMSTAG_STENCIL_BOX && stag->stencilType != DMSTAG_STENCIL_STAR) SETERRQ1(PetscObjectComm((PetscObject)dm),PETSC_ERR_SUP,"Unsupported stencil type %s",DMStagStencilTypes[stag->stencilType]);
+  if (stag->stencilType != DMSTAG_STENCIL_NONE && stag->stencilType != DMSTAG_STENCIL_BOX && stag->stencilType != DMSTAG_STENCIL_STAR) SETERRQ1(PetscObjectComm((PetscObject)dm),PETSC_ERR_SUP,"Unsupported stencil type %s",DMStagStencilTypes[stag->stencilType]);
   if (stag->stencilType == DMSTAG_STENCIL_NONE && stag->stencilWidth != 0) SETERRQ(PetscObjectComm((PetscObject)dm),PETSC_ERR_SUP,"DMStag 3d setup requires stencil width 0 with stencil type none");
   star = (PetscBool)(stag->stencilType == DMSTAG_STENCIL_STAR);
 
@@ -1597,8 +1597,8 @@ static PetscErrorCode DMStagSetUpBuildL2G_3d(DM dm,const PetscInt *globalOffsets
   }
 
   /* Precompute elements per row and layer on neighbor (zero unused) */
-  PetscMemzero(eprNeighbor,27*sizeof(PetscInt));
-  PetscMemzero(eplNeighbor,27*sizeof(PetscInt));
+  ierr = PetscMemzero(eprNeighbor,sizeof(eprNeighbor));CHKERRQ(ierr);
+  ierr = PetscMemzero(eplNeighbor,sizeof(eplNeighbor));CHKERRQ(ierr);
   if (stag->neighbors[0] >= 0) {
     eprNeighbor[0] = stag->entriesPerElement * nNeighbors[0][0];
     eplNeighbor[0] = eprNeighbor[0] * nNeighbors[0][1];

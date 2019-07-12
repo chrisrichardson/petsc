@@ -25,7 +25,7 @@ struct _n_TaoMonitorDrawCtx {
 /*@
   TaoCreate - Creates a TAO solver
 
-  Collective on MPI_Comm
+  Collective
 
   Input Parameter:
 . comm - MPI communicator
@@ -156,6 +156,8 @@ PetscErrorCode TaoCreate(MPI_Comm comm, Tao *newtao)
   
   tao->bounded = PETSC_FALSE;
 
+  tao->header_printed = PETSC_FALSE;
+
   /* These flags prevents algorithms from overriding user options */
   tao->max_it_changed   =PETSC_FALSE;
   tao->max_funcs_changed=PETSC_FALSE;
@@ -205,8 +207,8 @@ PetscErrorCode TaoSolve(Tao tao)
                                 "Institution = {Argonne National Laboratory},\n"
                                 "Year   = 2014,\n"
                                 "Number = {ANL/MCS-TM-322 - Revision 3.5},\n"
-                                "url    = {http://www.mcs.anl.gov/tao}\n}\n",&set);CHKERRQ(ierr);
-
+                                "url    = {https://www.mcs.anl.gov/research/projects/tao/}\n}\n",&set);CHKERRQ(ierr);
+  tao->header_printed = PETSC_FALSE;
   ierr = TaoSetUp(tao);CHKERRQ(ierr);
   ierr = TaoResetStatistics(tao);CHKERRQ(ierr);
   if (tao->linesearch) {
@@ -338,10 +340,7 @@ PetscErrorCode TaoDestroy(Tao *tao)
   ierr = VecDestroy(&(*tao)->res_weights_v);CHKERRQ(ierr);
   ierr = TaoCancelMonitors(*tao);CHKERRQ(ierr);
   if ((*tao)->hist_malloc) {
-    ierr = PetscFree((*tao)->hist_obj);CHKERRQ(ierr);
-    ierr = PetscFree((*tao)->hist_resid);CHKERRQ(ierr);
-    ierr = PetscFree((*tao)->hist_cnorm);CHKERRQ(ierr);
-    ierr = PetscFree((*tao)->hist_lits);CHKERRQ(ierr);
+    ierr = PetscFree4((*tao)->hist_obj,(*tao)->hist_resid,(*tao)->hist_cnorm,(*tao)->hist_lits);CHKERRQ(ierr);
   }
   if ((*tao)->res_weights_n) {
     ierr = PetscFree((*tao)->res_weights_rows);CHKERRQ(ierr);
@@ -1188,8 +1187,6 @@ PetscErrorCode TaoGetKSP(Tao tao, KSP *ksp)
 
    Level: intermediate
 
-.keywords: TAO
-
 .seealso:  TaoGetKSP()
 @*/
 PetscErrorCode  TaoGetLinearSolveIterations(Tao tao,PetscInt *lits)
@@ -1355,11 +1352,9 @@ PetscErrorCode TaoResetStatistics(Tao tao)
 
   Level: advanced
 
-.keywords: Tao, update
-
 .seealso TaoSolve()
 @*/
-PetscErrorCode  TaoSetUpdate(Tao tao, PetscErrorCode (*func)(Tao, PetscInt), void *ctx)
+PetscErrorCode  TaoSetUpdate(Tao tao, PetscErrorCode (*func)(Tao, PetscInt,void*), void *ctx)
 {
   PetscFunctionBegin;
   PetscValidHeaderSpecific(tao, TAO_CLASSID,1);
@@ -1535,8 +1530,9 @@ PetscErrorCode TaoMonitorDefault(Tao tao, void *ctx)
   gnorm=tao->residual;
   ierr = PetscViewerASCIIGetTab(viewer, &tabs);CHKERRQ(ierr);
   ierr = PetscViewerASCIISetTab(viewer, ((PetscObject)tao)->tablevel);CHKERRQ(ierr);
-  if (its == 0 && ((PetscObject)tao)->prefix) {
+  if (its == 0 && ((PetscObject)tao)->prefix && !tao->header_printed) {
      ierr = PetscViewerASCIIPrintf(viewer,"  Iteration information for %s solve.\n",((PetscObject)tao)->prefix);CHKERRQ(ierr);
+     tao->header_printed = PETSC_TRUE;
    }
   ierr=PetscViewerASCIIPrintf(viewer,"%3D TAO,",its);CHKERRQ(ierr);
   ierr=PetscViewerASCIIPrintf(viewer,"  Function value: %g,",(double)fct);CHKERRQ(ierr);
@@ -1587,8 +1583,9 @@ PetscErrorCode TaoDefaultGMonitor(Tao tao, void *ctx)
   tr=tao->trust;
   ierr = PetscViewerASCIIGetTab(viewer, &tabs);CHKERRQ(ierr);
   ierr = PetscViewerASCIISetTab(viewer, ((PetscObject)tao)->tablevel);CHKERRQ(ierr);
-  if (its == 0 && ((PetscObject)tao)->prefix) {
+  if (its == 0 && ((PetscObject)tao)->prefix && !tao->header_printed) {
      ierr = PetscViewerASCIIPrintf(viewer,"  Iteration information for %s solve.\n",((PetscObject)tao)->prefix);CHKERRQ(ierr);
+     tao->header_printed = PETSC_TRUE;
    }
   ierr=PetscViewerASCIIPrintf(viewer,"%3D TAO,",its);CHKERRQ(ierr);
   ierr=PetscViewerASCIIPrintf(viewer,"  Function value: %g,",(double)fct);CHKERRQ(ierr);
@@ -2223,8 +2220,6 @@ PetscErrorCode TaoRegisterDestroy(void)
 
    Level: intermediate
 
-.keywords: Tao, nonlinear, get, iteration, number,
-
 .seealso:   TaoGetLinearSolveIterations(), TaoGetResidualNorm(), TaoGetObjective()
 @*/
 PetscErrorCode  TaoGetIterationNumber(Tao tao,PetscInt *iter)
@@ -2249,8 +2244,6 @@ PetscErrorCode  TaoGetIterationNumber(Tao tao,PetscInt *iter)
 .  value - the current value
 
    Level: intermediate
-
-.keywords: Tao, nonlinear, get, iteration, number,
 
 .seealso:   TaoGetLinearSolveIterations(), TaoGetIterationNumber(), TaoGetResidualNorm()
 @*/
@@ -2280,8 +2273,6 @@ PetscErrorCode  TaoGetObjective(Tao tao,PetscReal *value)
    Developer Note: This is the 2-norm of the residual, we cannot use TaoGetGradientNorm() because that has
                    a different meaning. For some reason Tao sometimes calls the gradient the residual.
 
-.keywords: Tao, nonlinear, get, iteration, number,
-
 .seealso:   TaoGetLinearSolveIterations(), TaoGetIterationNumber(), TaoGetObjective()
 @*/
 PetscErrorCode  TaoGetResidualNorm(Tao tao,PetscReal *value)
@@ -2303,8 +2294,6 @@ PetscErrorCode  TaoGetResidualNorm(Tao tao,PetscReal *value)
 .  iter - iteration number
 
    Level: developer
-
-.keywords: Tao, nonlinear, set, iteration, number,
 
 .seealso:   TaoGetLinearSolveIterations()
 @*/
@@ -2339,8 +2328,6 @@ PetscErrorCode  TaoSetIterationNumber(Tao tao,PetscInt iter)
 
    Level: intermediate
 
-.keywords: Tao, nonlinear, get, iteration, number,
-
 .seealso:   TaoGetLinearSolveIterations()
 @*/
 PetscErrorCode  TaoGetTotalIterationNumber(Tao tao,PetscInt *iter)
@@ -2362,8 +2349,6 @@ PetscErrorCode  TaoGetTotalIterationNumber(Tao tao,PetscInt *iter)
 .  iter - iteration number
 
    Level: developer
-
-.keywords: Tao, nonlinear, set, iteration, number,
 
 .seealso:   TaoGetLinearSolveIterations()
 @*/
@@ -2615,11 +2600,8 @@ PetscErrorCode TaoSetConvergenceHistory(Tao tao, PetscReal obj[], PetscReal resi
 
   if (na == PETSC_DECIDE || na == PETSC_DEFAULT) na = 1000;
   if (!obj && !resid && !cnorm && !lits) {
-    ierr = PetscCalloc1(na,&obj);CHKERRQ(ierr);
-    ierr = PetscCalloc1(na,&resid);CHKERRQ(ierr);
-    ierr = PetscCalloc1(na,&cnorm);CHKERRQ(ierr);
-    ierr = PetscCalloc1(na,&lits);CHKERRQ(ierr);
-    tao->hist_malloc=PETSC_TRUE;
+    ierr = PetscCalloc4(na,&obj,na,&resid,na,&cnorm,na,&lits);CHKERRQ(ierr);
+    tao->hist_malloc = PETSC_TRUE;
   }
 
   tao->hist_obj = obj;
@@ -2824,8 +2806,6 @@ PetscErrorCode  TaoGradientNorm(Tao tao, Vec gradient, NormType type, PetscReal 
 
    Level: intermediate
 
-.keywords: Tao,  vector, monitor, view
-
 .seealso: TaoMonitorSet(), TaoMonitorDefault(), VecView(), TaoMonitorDrawCtx()
 @*/
 PetscErrorCode  TaoMonitorDrawCtxCreate(MPI_Comm comm,const char host[],const char label[],int x,int y,int m,int n,PetscInt howoften,TaoMonitorDrawCtx *ctx)
@@ -2849,8 +2829,6 @@ PetscErrorCode  TaoMonitorDrawCtxCreate(MPI_Comm comm,const char host[],const ch
 .    ctx - the monitor context
 
    Level: intermediate
-
-.keywords: Tao,  vector, monitor, view
 
 .seealso: TaoMonitorSet(), TaoMonitorDefault(), VecView(), TaoMonitorDrawSolution()
 @*/

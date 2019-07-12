@@ -1,8 +1,8 @@
 /*
    A star forest (SF) describes a communication pattern
 */
-#if !defined(__PETSCSF_H)
-#define __PETSCSF_H
+#if !defined(PETSCSF_H)
+#define PETSCSF_H
 #include <petscsys.h>
 #include <petscsftypes.h>
 
@@ -11,7 +11,7 @@ PETSC_EXTERN PetscClassId PETSCSF_CLASSID;
 /*J
     PetscSFType - String with the name of a PetscSF method or the creation function
        with an optional dynamic library name, for example
-       http://www.mcs.anl.gov/petsc/lib.so:mysfcreate()
+       https://www.mcs.anl.gov/petsc/lib.so:mysfcreate()
 
    Level: beginner
 
@@ -81,6 +81,7 @@ PETSC_EXTERN PetscErrorCode PetscSFCreateEmbeddedLeafSF(PetscSF,PetscInt,const P
 PETSC_EXTERN PetscErrorCode PetscSFReset(PetscSF);
 PETSC_EXTERN PetscErrorCode PetscSFSetUpRanks(PetscSF,MPI_Group);
 PETSC_EXTERN PetscErrorCode PetscSFGetRanks(PetscSF,PetscInt*,const PetscMPIInt**,const PetscInt**,const PetscInt**,const PetscInt**);
+PETSC_EXTERN PetscErrorCode PetscSFGetLeafRanks(PetscSF,PetscInt*,const PetscMPIInt**,const PetscInt**,const PetscInt**);
 PETSC_EXTERN PetscErrorCode PetscSFGetGroups(PetscSF,MPI_Group*,MPI_Group*);
 PETSC_EXTERN PetscErrorCode PetscSFGetMultiSF(PetscSF,PetscSF*);
 PETSC_EXTERN PetscErrorCode PetscSFCreateInverseSF(PetscSF,PetscSF*);
@@ -89,6 +90,11 @@ PETSC_EXTERN PetscErrorCode PetscSFCreateInverseSF(PetscSF,PetscSF*);
 PETSC_EXTERN PetscErrorCode PetscSFBcastBegin(PetscSF,MPI_Datatype,const void*,void*)
   PetscAttrMPIPointerWithType(3,2) PetscAttrMPIPointerWithType(4,2);
 PETSC_EXTERN PetscErrorCode PetscSFBcastEnd(PetscSF,MPI_Datatype,const void*,void*)
+  PetscAttrMPIPointerWithType(3,2) PetscAttrMPIPointerWithType(4,2);
+/* Reduce rootdata to leafdata using provided operation */
+PETSC_EXTERN PetscErrorCode PetscSFBcastAndOpBegin(PetscSF,MPI_Datatype,const void*,void*,MPI_Op)
+  PetscAttrMPIPointerWithType(3,2) PetscAttrMPIPointerWithType(4,2);
+PETSC_EXTERN PetscErrorCode PetscSFBcastAndOpEnd(PetscSF,MPI_Datatype,const void*,void*,MPI_Op)
   PetscAttrMPIPointerWithType(3,2) PetscAttrMPIPointerWithType(4,2);
 /* Reduce leafdata into rootdata using provided operation */
 PETSC_EXTERN PetscErrorCode PetscSFReduceBegin(PetscSF,MPI_Datatype,const void*,void *,MPI_Op)
@@ -103,7 +109,7 @@ PETSC_EXTERN PetscErrorCode PetscSFFetchAndOpEnd(PetscSF,MPI_Datatype,void*,cons
 /* Compute the degree of every root vertex (number of leaves in its star) */
 PETSC_EXTERN PetscErrorCode PetscSFComputeDegreeBegin(PetscSF,const PetscInt**);
 PETSC_EXTERN PetscErrorCode PetscSFComputeDegreeEnd(PetscSF,const PetscInt**);
-PETSC_EXTERN PetscErrorCode PetscSFComputeMultiRootOriginalNumbering(PetscSF,const PetscInt[],PetscInt*[]);
+PETSC_EXTERN PetscErrorCode PetscSFComputeMultiRootOriginalNumbering(PetscSF,const PetscInt[],PetscInt*,PetscInt*[]);
 /* Concatenate data from all leaves into roots */
 PETSC_EXTERN PetscErrorCode PetscSFGatherBegin(PetscSF,MPI_Datatype,const void*,void*)
   PetscAttrMPIPointerWithType(3,2) PetscAttrMPIPointerWithType(4,2);

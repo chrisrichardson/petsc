@@ -81,12 +81,32 @@ PetscErrorCode DMCreateLocalVector_Section_Private(DM dm,Vec *vec)
   PetscFunctionReturn(0);
 }
 
-/* This assumes that the DM has been cloned prior to the call */
-PetscErrorCode DMCreateSubDM_Section_Private(DM dm, PetscInt numFields, const PetscInt fields[], IS *is, DM *subdm)
+/*@C
+  DMCreateSectionSubDM - Returns an IS and subDM+subSection encapsulating a subproblem defined by the fields in a PetscSection in the DM.
+
+  Not collective
+
+  Input Parameters:
++ dm        - The DM object
+. numFields - The number of fields in this subproblem
+- fields    - The field numbers of the selected fields
+
+  Output Parameters:
++ is - The global indices for the subproblem
+- subdm - The DM for the subproblem, which must already have be cloned from dm
+
+  Note: This handles all information in the DM class and the PetscSection. This is used as the basis for creating subDMs in specialized classes,
+  such as Plex and Forest.
+
+  Level: intermediate
+
+.seealso DMCreateSubDM(), DMGetSection(), DMPlexSetMigrationSF(), DMView()
+@*/
+PetscErrorCode DMCreateSectionSubDM(DM dm, PetscInt numFields, const PetscInt fields[], IS *is, DM *subdm)
 {
   PetscSection   section, sectionGlobal;
   PetscInt      *subIndices;
-  PetscInt       subSize = 0, subOff = 0, nF, f, pStart, pEnd, p;
+  PetscInt       subSize = 0, subOff = 0, Nf, f, pStart, pEnd, p;
   PetscErrorCode ierr;
 
   PetscFunctionBegin;
@@ -95,8 +115,8 @@ PetscErrorCode DMCreateSubDM_Section_Private(DM dm, PetscInt numFields, const Pe
   ierr = DMGetGlobalSection(dm, &sectionGlobal);CHKERRQ(ierr);
   if (!section) SETERRQ(PetscObjectComm((PetscObject)dm), PETSC_ERR_ARG_WRONG, "Must set default section for DM before splitting fields");
   if (!sectionGlobal) SETERRQ(PetscObjectComm((PetscObject)dm), PETSC_ERR_ARG_WRONG, "Must set default global section for DM before splitting fields");
-  ierr = PetscSectionGetNumFields(section, &nF);CHKERRQ(ierr);
-  if (numFields > nF) SETERRQ2(PetscObjectComm((PetscObject)dm), PETSC_ERR_ARG_WRONG, "Number of requested fields %d greater than number of DM fields %d", numFields, nF);
+  ierr = PetscSectionGetNumFields(section, &Nf);CHKERRQ(ierr);
+  if (numFields > Nf) SETERRQ2(PetscObjectComm((PetscObject)dm), PETSC_ERR_ARG_WRONG, "Number of requested fields %d greater than number of DM fields %d", numFields, Nf);
   if (is) {
     PetscInt bs, bsLocal[2], bsMinMax[2];
 
@@ -189,22 +209,19 @@ PetscErrorCode DMCreateSubDM_Section_Private(DM dm, PetscInt numFields, const Pe
       ierr = PetscObjectCompose((PetscObject) *is, "nullspace", (PetscObject) nullSpace);CHKERRQ(ierr);
       ierr = MatNullSpaceDestroy(&nullSpace);CHKERRQ(ierr);
     }
-    if (dm->prob) {
-      PetscInt Nf;
-
-      ierr = PetscDSGetNumFields(dm->prob, &Nf);CHKERRQ(ierr);
-      if (nF != Nf) SETERRQ2(PetscObjectComm((PetscObject)dm), PETSC_ERR_ARG_WRONG, "The number of DM fields %d does not match the number of Section fields %d", Nf, nF);
+    if (dm->probs) {
       ierr = DMSetNumFields(*subdm, numFields);CHKERRQ(ierr);
       for (f = 0; f < numFields; ++f) {
         PetscObject disc;
 
-        ierr = DMGetField(dm, fields[f], &disc);CHKERRQ(ierr);
-        ierr = DMSetField(*subdm, f, disc);CHKERRQ(ierr);
+        ierr = DMGetField(dm, fields[f], NULL, &disc);CHKERRQ(ierr);
+        ierr = DMSetField(*subdm, f, NULL, disc);CHKERRQ(ierr);
       }
+      ierr = DMCreateDS(*subdm);CHKERRQ(ierr);
       if (numFields == 1 && is) {
         PetscObject disc, space, pmat;
 
-        ierr = DMGetField(*subdm, 0, &disc);CHKERRQ(ierr);
+        ierr = DMGetField(*subdm, 0, NULL, &disc);CHKERRQ(ierr);
         ierr = PetscObjectQuery(disc, "nullspace", &space);CHKERRQ(ierr);
         if (space) {ierr = PetscObjectCompose((PetscObject) *is, "nullspace", space);CHKERRQ(ierr);}
         ierr = PetscObjectQuery(disc, "nearnullspace", &space);CHKERRQ(ierr);
@@ -212,9 +229,35 @@ PetscErrorCode DMCreateSubDM_Section_Private(DM dm, PetscInt numFields, const Pe
         ierr = PetscObjectQuery(disc, "pmat", &pmat);CHKERRQ(ierr);
         if (pmat) {ierr = PetscObjectCompose((PetscObject) *is, "pmat", pmat);CHKERRQ(ierr);}
       }
-      ierr = PetscDSCopyConstants(dm->prob, (*subdm)->prob);CHKERRQ(ierr);
-      ierr = PetscDSCopyBoundary(dm->prob, (*subdm)->prob);CHKERRQ(ierr);
-      ierr = PetscDSSelectEquations(dm->prob, numFields, fields, (*subdm)->prob);CHKERRQ(ierr);
+      ierr = PetscDSCopyConstants(dm->probs[0].ds, (*subdm)->probs[0].ds);CHKERRQ(ierr);
+      ierr = PetscDSCopyBoundary(dm->probs[0].ds, (*subdm)->probs[0].ds);CHKERRQ(ierr);
+      /* Translate DM fields to DS fields */
+      if (dm->probs[0].fields) {
+        IS              infields, dsfields;
+        const PetscInt *fld, *ofld;
+        PetscInt       *fidx;
+        PetscInt        onf, nf, f, g;
+
+        ierr = ISCreateGeneral(PETSC_COMM_SELF, numFields, fields, PETSC_USE_POINTER, &infields);CHKERRQ(ierr);
+        ierr = ISIntersect(infields, dm->probs[0].fields, &dsfields);CHKERRQ(ierr);
+        ierr = ISDestroy(&infields);CHKERRQ(ierr);
+        ierr = ISGetLocalSize(dsfields, &nf);CHKERRQ(ierr);
+        if (!nf) SETERRQ(PETSC_COMM_SELF, PETSC_ERR_PLIB, "DS cannot be supported on 0 fields");
+        ierr = ISGetIndices(dsfields, &fld);CHKERRQ(ierr);
+        ierr = ISGetLocalSize(dm->probs[0].fields, &onf);CHKERRQ(ierr);
+        ierr = ISGetIndices(dm->probs[0].fields, &ofld);CHKERRQ(ierr);
+        ierr = PetscMalloc1(nf, &fidx);CHKERRQ(ierr);
+        for (f = 0, g = 0; f < onf && g < nf; ++f) {
+          if (ofld[f] == fld[g]) fidx[g++] = f;
+        }
+        ierr = ISRestoreIndices(dm->probs[0].fields, &ofld);CHKERRQ(ierr);
+        ierr = ISRestoreIndices(dsfields, &fld);CHKERRQ(ierr);
+        ierr = ISDestroy(&dsfields);CHKERRQ(ierr);
+        ierr = PetscDSSelectEquations(dm->probs[0].ds, nf, fidx, (*subdm)->probs[0].ds);CHKERRQ(ierr);
+        ierr = PetscFree(fidx);CHKERRQ(ierr);
+      } else {
+        ierr = PetscDSSelectEquations(dm->probs[0].ds, numFields, fields, (*subdm)->probs[0].ds);CHKERRQ(ierr);
+      }
     }
     if (dm->coarseMesh) {
       ierr = DMCreateSubDM(dm->coarseMesh, numFields, fields, NULL, &(*subdm)->coarseMesh);CHKERRQ(ierr);
@@ -223,8 +266,27 @@ PetscErrorCode DMCreateSubDM_Section_Private(DM dm, PetscInt numFields, const Pe
   PetscFunctionReturn(0);
 }
 
-/* This assumes that the DM has been cloned prior to the call */
-PetscErrorCode DMCreateSuperDM_Section_Private(DM dms[], PetscInt len, IS **is, DM *superdm)
+/*@C
+  DMCreateSectionSuperDM - Returns an arrays of ISes and DM+Section encapsulating a superproblem defined by the DM+Sections passed in.
+
+  Not collective
+
+  Input Parameter:
++ dms - The DM objects
+- len - The number of DMs
+
+  Output Parameters:
++ is - The global indices for the subproblem, or NULL
+- superdm - The DM for the superproblem, which must already have be cloned
+
+  Note: This handles all information in the DM class and the PetscSection. This is used as the basis for creating subDMs in specialized classes,
+  such as Plex and Forest.
+
+  Level: intermediate
+
+.seealso DMCreateSuperDM(), DMGetSection(), DMPlexSetMigrationSF(), DMView()
+@*/
+PetscErrorCode DMCreateSectionSuperDM(DM dms[], PetscInt len, IS **is, DM *superdm)
 {
   MPI_Comm       comm;
   PetscSection   supersection, *sections, *sectionGlobals;
@@ -290,16 +352,17 @@ PetscErrorCode DMCreateSuperDM_Section_Private(DM dms[], PetscInt len, IS **is, 
     }
   }
   /* Preserve discretizations */
-  if (len && dms[0]->prob) {
+  if (len && dms[0]->probs) {
     ierr = DMSetNumFields(*superdm, Nf);CHKERRQ(ierr);
     for (i = 0, supf = 0; i < len; ++i) {
       for (f = 0; f < Nfs[i]; ++f, ++supf) {
         PetscObject disc;
 
-        ierr = DMGetField(dms[i], f, &disc);CHKERRQ(ierr);
-        ierr = DMSetField(*superdm, supf, disc);CHKERRQ(ierr);
+        ierr = DMGetField(dms[i], f, NULL, &disc);CHKERRQ(ierr);
+        ierr = DMSetField(*superdm, supf, NULL, disc);CHKERRQ(ierr);
       }
     }
+    ierr = DMCreateDS(*superdm);CHKERRQ(ierr);
   }
   /* Preserve nullspaces */
   for (i = 0, supf = 0; i < len; ++i) {

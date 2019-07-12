@@ -3,9 +3,8 @@
      Provides the functions for index sets (IS) defined by a list of integers.
 */
 #include <../src/vec/is/is/impls/general/general.h> /*I  "petscis.h"  I*/
-#include <petscvec.h>
-#include <petscviewer.h>
-#include <petscviewerhdf5.h>
+#include <petsc/private/viewerimpl.h>
+#include <petsc/private/viewerhdf5impl.h>
 
 static PetscErrorCode ISDuplicate_General(IS is,IS *newIS)
 {
@@ -64,7 +63,7 @@ static PetscErrorCode ISCopy_General(IS is,IS isy)
   ierr = PetscLayoutGetSize(isy->map, &Ny);CHKERRQ(ierr);
   if (n != ny || N != Ny) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_ARG_INCOMP,"Index sets incompatible");
   isy_general->sorted = is_general->sorted;
-  ierr = PetscMemcpy(isy_general->idx,is_general->idx,n*sizeof(PetscInt));CHKERRQ(ierr);
+  ierr = PetscArraycpy(isy_general->idx,is_general->idx,n);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
@@ -223,9 +222,9 @@ static PetscErrorCode ISInvertPermutation_General(IS is,PetscInt nlocal,IS *isou
 #if defined(PETSC_HAVE_HDF5)
 static PetscErrorCode ISView_General_HDF5(IS is, PetscViewer viewer)
 {
+  PetscViewer_HDF5 *hdf5 = (PetscViewer_HDF5*) viewer->data;
   hid_t           filespace;  /* file dataspace identifier */
   hid_t           chunkspace; /* chunk dataset property identifier */
-  hid_t           plist_id;   /* property list identifier */
   hid_t           dset_id;    /* dataset identifier */
   hid_t           memspace;   /* memory dataspace identifier */
   hid_t           inttype;    /* int type (H5T_NATIVE_INT or H5T_NATIVE_LLONG) */
@@ -238,6 +237,7 @@ static PetscErrorCode ISView_General_HDF5(IS is, PetscViewer viewer)
 
   PetscFunctionBegin;
   ierr = ISGetBlockSize(is,&bs);CHKERRQ(ierr);
+  bs   = PetscMax(bs, 1); /* If N = 0, bs  = 0 as well */
   ierr = PetscViewerHDF5OpenGroup(viewer, &file_id, &group);CHKERRQ(ierr);
   ierr = PetscViewerHDF5GetTimestep(viewer, &timestep);CHKERRQ(ierr);
 
@@ -264,7 +264,7 @@ static PetscErrorCode ISView_General_HDF5(IS is, PetscViewer viewer)
   ierr = PetscHDF5IntCast(N/bs,dims + dim);CHKERRQ(ierr);
 
   maxDims[dim]   = dims[dim];
-  chunkDims[dim] = dims[dim];
+  chunkDims[dim] = PetscMax(1,dims[dim]);
   ++dim;
   if (bs >= 1) {
     dims[dim]      = bs;
@@ -287,11 +287,7 @@ static PetscErrorCode ISView_General_HDF5(IS is, PetscViewer viewer)
     PetscStackCallHDF5Return(chunkspace,H5Pcreate,(H5P_DATASET_CREATE));
     PetscStackCallHDF5(H5Pset_chunk,(chunkspace, dim, chunkDims));
 
-#if (H5_VERS_MAJOR * 10000 + H5_VERS_MINOR * 100 + H5_VERS_RELEASE >= 10800)
     PetscStackCallHDF5Return(dset_id,H5Dcreate2,(group, isname, inttype, filespace, H5P_DEFAULT, chunkspace, H5P_DEFAULT));
-#else
-    PetscStackCallHDF5Return(dset_id,H5Dcreate,(group, isname, inttype, filespace, H5P_DEFAULT));
-#endif
     PetscStackCallHDF5(H5Pclose,(chunkspace));
   } else {
     PetscStackCallHDF5Return(dset_id,H5Dopen2,(group, isname, H5P_DEFAULT));
@@ -339,21 +335,13 @@ static PetscErrorCode ISView_General_HDF5(IS is, PetscViewer viewer)
     PetscStackCallHDF5Return(filespace,H5Screate,(H5S_NULL));
   }
 
-  /* Create property list for collective dataset write */
-  PetscStackCallHDF5Return(plist_id,H5Pcreate,(H5P_DATASET_XFER));
-#if defined(PETSC_HAVE_H5PSET_FAPL_MPIO)
-  PetscStackCallHDF5(H5Pset_dxpl_mpio,(plist_id, H5FD_MPIO_COLLECTIVE));
-#endif
-  /* To write dataset independently use H5Pset_dxpl_mpio(plist_id, H5FD_MPIO_INDEPENDENT) */
-
   ierr = ISGetIndices(is, &ind);CHKERRQ(ierr);
-  PetscStackCallHDF5(H5Dwrite,(dset_id, inttype, memspace, filespace, plist_id, ind));
+  PetscStackCallHDF5(H5Dwrite,(dset_id, inttype, memspace, filespace, hdf5->dxpl_id, ind));
   PetscStackCallHDF5(H5Fflush,(file_id, H5F_SCOPE_GLOBAL));
   ierr = ISRestoreIndices(is, &ind);CHKERRQ(ierr);
 
   /* Close/release resources */
-  if (group != file_id) PetscStackCallHDF5(H5Gclose,(group));
-  PetscStackCallHDF5(H5Pclose,(plist_id));
+  PetscStackCallHDF5(H5Gclose,(group));
   PetscStackCallHDF5(H5Sclose,(filespace));
   PetscStackCallHDF5(H5Sclose,(memspace));
   PetscStackCallHDF5(H5Dclose,(dset_id));
@@ -626,7 +614,7 @@ PetscErrorCode ISSetUp_General(IS is)
    ISCreateGeneral - Creates a data structure for an index set
    containing a list of integers.
 
-   Collective on MPI_Comm
+   Collective
 
    Input Parameters:
 +  comm - the MPI communicator
@@ -646,8 +634,6 @@ PetscErrorCode ISSetUp_General(IS is)
 
    Level: beginner
 
-  Concepts: index sets^creating
-  Concepts: IS^creating
 
 .seealso: ISCreateStride(), ISCreateBlock(), ISAllGather(), PETSC_COPY_VALUES, PETSC_OWN_POINTER, PETSC_USE_POINTER, PetscCopyMode
 @*/
@@ -675,8 +661,6 @@ PetscErrorCode  ISCreateGeneral(MPI_Comm comm,PetscInt n,const PetscInt idx[],Pe
 
    Level: beginner
 
-  Concepts: index sets^creating
-  Concepts: IS^creating
 
 .seealso: ISCreateGeneral(), ISCreateStride(), ISCreateBlock(), ISAllGather()
 @*/
@@ -705,7 +689,7 @@ PetscErrorCode  ISGeneralSetIndices_General(IS is,PetscInt n,const PetscInt idx[
   if (mode == PETSC_COPY_VALUES) {
     ierr = PetscMalloc1(n,&sub->idx);CHKERRQ(ierr);
     ierr = PetscLogObjectMemory((PetscObject)is,n*sizeof(PetscInt));CHKERRQ(ierr);
-    ierr = PetscMemcpy(sub->idx,idx,n*sizeof(PetscInt));CHKERRQ(ierr);
+    ierr = PetscArraycpy(sub->idx,idx,n);CHKERRQ(ierr);
     sub->allocated = PETSC_TRUE;
   } else if (mode == PETSC_OWN_POINTER) {
     sub->idx = (PetscInt*)idx;
@@ -733,9 +717,3 @@ PETSC_EXTERN PetscErrorCode ISCreate_General(IS is)
   ierr = PetscObjectComposeFunction((PetscObject)is,"ISGeneralSetIndices_C",ISGeneralSetIndices_General);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
-
-
-
-
-
-

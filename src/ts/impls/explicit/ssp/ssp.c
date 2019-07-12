@@ -498,12 +498,10 @@ PETSC_EXTERN PetscErrorCode TSCreate_SSP(TS ts)
 
 /*@C
   TSSSPInitializePackage - This function initializes everything in the TSSSP package. It is called
-  from PetscDLLibraryRegister() when using dynamic libraries, and on the first call to TSCreate_SSP()
-  when using static libraries.
+  from TSInitializePackage().
 
   Level: developer
 
-.keywords: TS, TSSSP, initialize, package
 .seealso: PetscInitialize()
 @*/
 PetscErrorCode TSSSPInitializePackage(void)
@@ -526,7 +524,6 @@ PetscErrorCode TSSSPInitializePackage(void)
 
   Level: developer
 
-.keywords: Petsc, destroy, package
 .seealso: PetscFinalize()
 @*/
 PetscErrorCode TSSSPFinalizePackage(void)

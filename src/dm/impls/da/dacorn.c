@@ -42,7 +42,7 @@ PetscErrorCode DMCreateCoordinateField_DA(DM dm, DMField *field)
    DMDASetFieldName - Sets the names of individual field components in multicomponent
    vectors associated with a DMDA.
 
-   Not Collective
+   Logically collective; name must contain a common value
 
    Input Parameters:
 +  da - the distributed array
@@ -54,8 +54,6 @@ PetscErrorCode DMCreateCoordinateField_DA(DM dm, DMField *field)
     It must be called after having called DMSetUp().
 
   Level: intermediate
-
-.keywords: distributed array, get, component name
 
 .seealso: DMDAGetFieldName(), DMDASetCoordinateName(), DMDAGetCoordinateName(), DMDASetFieldNames(), DMSetUp()
 @*/
@@ -76,7 +74,7 @@ PetscErrorCode  DMDASetFieldName(DM da,PetscInt nf,const char name[])
 /*@C
    DMDAGetFieldNames - Gets the name of each component in the vector associated with the DMDA
 
-   Collective on TS
+   Not collective; names will contain a common value
 
    Input Parameter:
 .  dm - the DMDA object
@@ -87,8 +85,6 @@ PetscErrorCode  DMDASetFieldName(DM da,PetscInt nf,const char name[])
    Level: intermediate
 
    Not supported from Fortran, use DMDAGetFieldName()
-
-.keywords: distributed array, get, component name
 
 .seealso: DMDAGetFieldName(), DMDASetCoordinateName(), DMDAGetCoordinateName(), DMDASetFieldName(), DMDASetFieldNames()
 @*/
@@ -104,7 +100,7 @@ PetscErrorCode  DMDAGetFieldNames(DM da,const char * const **names)
 /*@C
    DMDASetFieldNames - Sets the name of each component in the vector associated with the DMDA
 
-   Collective on TS
+   Logically collective; names must contain a common value
 
    Input Parameters:
 +  dm - the DMDA object
@@ -116,8 +112,6 @@ PetscErrorCode  DMDAGetFieldNames(DM da,const char * const **names)
    Level: intermediate
 
    Not supported from Fortran, use DMDASetFieldName()
-
-.keywords: distributed array, get, component name
 
 .seealso: DMDAGetFieldName(), DMDASetCoordinateName(), DMDAGetCoordinateName(), DMDASetFieldName(), DMSetUp()
 @*/
@@ -142,7 +136,7 @@ PetscErrorCode  DMDASetFieldNames(DM da,const char * const *names)
    DMDAGetFieldName - Gets the names of individual field components in multicomponent
    vectors associated with a DMDA.
 
-   Not Collective
+   Not collective; name will contain a common value
 
    Input Parameter:
 +  da - the distributed array
@@ -156,8 +150,6 @@ PetscErrorCode  DMDASetFieldNames(DM da,const char * const *names)
     It must be called after having called DMSetUp().
 
   Level: intermediate
-
-.keywords: distributed array, get, component name
 
 .seealso: DMDASetFieldName(), DMDASetCoordinateName(), DMDAGetCoordinateName(), DMSetUp()
 @*/
@@ -177,7 +169,7 @@ PetscErrorCode  DMDAGetFieldName(DM da,PetscInt nf,const char **name)
 /*@C
    DMDASetCoordinateName - Sets the name of the coordinate directions associated with a DMDA, for example "x" or "y"
 
-   Not Collective
+   Logically collective; name must contain a common value
 
    Input Parameters:
 +  dm - the DM
@@ -187,11 +179,10 @@ PetscErrorCode  DMDAGetFieldName(DM da,PetscInt nf,const char **name)
   Notes:
     It must be called after having called DMSetUp().
 
+
   Level: intermediate
 
   Not supported from Fortran
-
-.keywords: distributed array, get, component name
 
 .seealso: DMDAGetCoordinateName(), DMDASetFieldName(), DMDAGetFieldName(), DMSetUp()
 @*/
@@ -212,7 +203,7 @@ PetscErrorCode DMDASetCoordinateName(DM dm,PetscInt nf,const char name[])
 /*@C
    DMDAGetCoordinateName - Gets the name of a coodinate direction associated with a DMDA.
 
-   Not Collective
+   Not collective; name will contain a common value
 
    Input Parameter:
 +  dm - the DM
@@ -223,12 +214,11 @@ PetscErrorCode DMDASetCoordinateName(DM dm,PetscInt nf,const char name[])
 
   Notes:
     It must be called after having called DMSetUp().
+    
 
   Level: intermediate
 
   Not supported from Fortran
-
-.keywords: distributed array, get, component name
 
 .seealso: DMDASetCoordinateName(), DMDASetFieldName(), DMDAGetFieldName(), DMSetUp()
 @*/
@@ -249,7 +239,7 @@ PetscErrorCode DMDAGetCoordinateName(DM dm,PetscInt nf,const char **name)
    DMDAGetCorners - Returns the global (x,y,z) indices of the lower left
    corner and size of the local region, excluding ghost points.
 
-   Not Collective
+   Not collective
 
    Input Parameter:
 .  da - the distributed array
@@ -268,8 +258,6 @@ PetscErrorCode DMDAGetCoordinateName(DM dm,PetscInt nf,const char **name)
    Any of y, z, n, and p can be passed in as NULL if not needed.
 
   Level: beginner
-
-.keywords: distributed array, get, corners, nodes, local indices
 
 .seealso: DMDAGetGhostCorners(), DMDAGetOwnershipRanges()
 @*/
@@ -296,7 +284,7 @@ PetscErrorCode  DMDAGetCorners(DM da,PetscInt *x,PetscInt *y,PetscInt *z,PetscIn
 /*@
    DMDAGetLocalBoundingBox - Returns the local bounding box for the DMDA.
 
-   Not Collective
+   Not collective
 
    Input Parameter:
 .  dm - the DM
@@ -308,8 +296,6 @@ PetscErrorCode  DMDAGetCorners(DM da,PetscInt *x,PetscInt *y,PetscInt *z,PetscIn
   Level: beginner
 
   Not supported from Fortran
-
-.keywords: distributed array, get, coordinates
 
 .seealso: DMDAGetCoordinateDA(), DMGetCoordinates(), DMDAGetBoundingBox()
 @*/
@@ -347,15 +333,15 @@ PetscErrorCode DMDAGetLocalBoundingBox(DM dm,PetscReal lmin[],PetscReal lmax[])
     max[1] = info.ys + info.ym-1;
     max[2] = info.zs + info.zm-1;
   }
-  if (lmin) {ierr = PetscMemcpy(lmin,min,dim*sizeof(PetscReal));CHKERRQ(ierr);}
-  if (lmax) {ierr = PetscMemcpy(lmax,max,dim*sizeof(PetscReal));CHKERRQ(ierr);}
+  if (lmin) {ierr = PetscArraycpy(lmin,min,dim);CHKERRQ(ierr);}
+  if (lmax) {ierr = PetscArraycpy(lmax,max,dim);CHKERRQ(ierr);}
   PetscFunctionReturn(0);
 }
 
 /*@
    DMDAGetBoundingBox - Returns the global bounding box for the DMDA.
 
-   Collective on DMDA
+   Collective
 
    Input Parameter:
 .  dm - the DM
@@ -365,8 +351,6 @@ PetscErrorCode DMDAGetLocalBoundingBox(DM dm,PetscReal lmin[],PetscReal lmax[])
 -  gmax - global maximim coordinates (length dim, optional)
 
   Level: beginner
-
-.keywords: distributed array, get, coordinates
 
 .seealso: DMDAGetCoordinateDA(), DMGetCoordinates(), DMDAGetLocalBoundingBox()
 @*/
@@ -402,7 +386,7 @@ PetscErrorCode DMDAGetReducedDMDA(DM da,PetscInt nfields,DM *nda)
 /*@
    DMDACreateCompatibleDMDA - Creates a DMDA with the same layout but with fewer or more fields
 
-   Collective on DMDA
+   Collective
 
    Input Parameters:
 +  da - the distributed array
@@ -412,8 +396,6 @@ PetscErrorCode DMDAGetReducedDMDA(DM da,PetscInt nfields,DM *nda)
 .  nda - the new DMDA
 
   Level: intermediate
-
-.keywords: distributed array, get, corners, nodes, local indices, coordinates
 
 .seealso: DMDAGetGhostCorners(), DMSetCoordinates(), DMDASetUniformCoordinates(), DMGetCoordinates(), DMDAGetGhostedCoordinates()
 @*/
@@ -473,7 +455,7 @@ PetscErrorCode  DMDACreateCompatibleDMDA(DM da,PetscInt nfields,DM *nda)
 /*@C
    DMDAGetCoordinateArray - Gets an array containing the coordinates of the DMDA
 
-   Not Collective
+   Not collective
 
    Input Parameter:
 .  dm - the DM
@@ -484,8 +466,6 @@ PetscErrorCode  DMDACreateCompatibleDMDA(DM da,PetscInt nfields,DM *nda)
   Level: intermediate
 
   Not supported from Fortran
-
-.keywords: distributed array, get, component name
 
 .seealso: DMDASetCoordinateName(), DMDASetFieldName(), DMDAGetFieldName(), DMDARestoreCoordinateArray()
 @*/
@@ -506,7 +486,7 @@ PetscErrorCode DMDAGetCoordinateArray(DM dm,void *xc)
 /*@C
    DMDARestoreCoordinateArray - Sets an array containing the coordinates of the DMDA
 
-   Not Collective
+   Not collective
 
    Input Parameter:
 +  dm - the DM
@@ -515,8 +495,6 @@ PetscErrorCode DMDAGetCoordinateArray(DM dm,void *xc)
   Level: intermediate
 
   Not supported from Fortran
-
-.keywords: distributed array, get, component name
 
 .seealso: DMDASetCoordinateName(), DMDASetFieldName(), DMDAGetFieldName(), DMDAGetCoordinateArray()
 @*/

@@ -8,6 +8,10 @@
 #include <petsc/private/logimpl.h>  /*I    "petscsys.h"   I*/
 
 PetscBool PetscLogSyncOn = PETSC_FALSE;
+PetscBool PetscLogMemory = PETSC_FALSE;
+#if defined(PETSC_HAVE_VIENNACL) || defined(PETSC_HAVE_CUDA) 
+PetscBool PetscLogGpuTraffic = PETSC_FALSE;
+#endif
 
 /*----------------------------------------------- Creation Functions -------------------------------------------------*/
 /* Note: these functions do not have prototypes in a public directory, so they are considered "internal" and not exported. */
@@ -22,7 +26,6 @@ PetscBool PetscLogSyncOn = PETSC_FALSE;
 
   Level: developer
 
-.keywords: log, event, create
 .seealso: PetscEventRegLogDestroy(), PetscStageLogCreate()
 @*/
 PetscErrorCode PetscEventRegLogCreate(PetscEventRegLog *eventLog)
@@ -49,7 +52,6 @@ PetscErrorCode PetscEventRegLogCreate(PetscEventRegLog *eventLog)
 
   Level: developer
 
-.keywords: log, event, destroy
 .seealso: PetscEventRegLogCreate()
 @*/
 PetscErrorCode PetscEventRegLogDestroy(PetscEventRegLog eventLog)
@@ -76,7 +78,6 @@ PetscErrorCode PetscEventRegLogDestroy(PetscEventRegLog eventLog)
 
   Level: developer
 
-.keywords: log, event, create
 .seealso: PetscEventPerfLogDestroy(), PetscStageLogCreate()
 @*/
 PetscErrorCode PetscEventPerfLogCreate(PetscEventPerfLog *eventLog)
@@ -103,7 +104,6 @@ PetscErrorCode PetscEventPerfLogCreate(PetscEventPerfLog *eventLog)
 
   Level: developer
 
-.keywords: log, event, destroy
 .seealso: PetscEventPerfLogCreate()
 @*/
 PetscErrorCode PetscEventPerfLogDestroy(PetscEventPerfLog eventLog)
@@ -127,7 +127,6 @@ PetscErrorCode PetscEventPerfLogDestroy(PetscEventPerfLog eventLog)
 
   Level: developer
 
-.keywords: log, event, destroy
 .seealso: PetscEventPerfLogCreate()
 @*/
 PetscErrorCode PetscEventPerfInfoClear(PetscEventPerfInfo *eventInfo)
@@ -145,9 +144,33 @@ PetscErrorCode PetscEventPerfInfoClear(PetscEventPerfInfo *eventInfo)
   eventInfo->time2         = 0.0;
   eventInfo->timeTmp       = 0.0;
   eventInfo->syncTime      = 0.0;
+  eventInfo->dof[0]        = -1.0;
+  eventInfo->dof[1]        = -1.0;
+  eventInfo->dof[2]        = -1.0;
+  eventInfo->dof[3]        = -1.0;
+  eventInfo->dof[4]        = -1.0;
+  eventInfo->dof[5]        = -1.0;
+  eventInfo->dof[6]        = -1.0;
+  eventInfo->dof[7]        = -1.0;
+  eventInfo->errors[0]     = -1.0;
+  eventInfo->errors[1]     = -1.0;
+  eventInfo->errors[2]     = -1.0;
+  eventInfo->errors[3]     = -1.0;
+  eventInfo->errors[4]     = -1.0;
+  eventInfo->errors[5]     = -1.0;
+  eventInfo->errors[6]     = -1.0;
+  eventInfo->errors[7]     = -1.0;
   eventInfo->numMessages   = 0.0;
   eventInfo->messageLength = 0.0;
   eventInfo->numReductions = 0.0;
+  #if defined(PETSC_HAVE_VIENNACL) || defined(PETSC_HAVE_CUDA) 
+  eventInfo->CpuToGpuCount = 0.0;
+  eventInfo->GpuToCpuCount = 0.0;
+  eventInfo->CpuToGpuSize  = 0.0;
+  eventInfo->GpuToCpuSize  = 0.0;
+  eventInfo->GpuFlops      = 0.0;
+  eventInfo->GpuTime       = 0.0;
+  #endif
   PetscFunctionReturn(0);
 }
 
@@ -164,7 +187,6 @@ PetscErrorCode PetscEventPerfInfoClear(PetscEventPerfInfo *eventInfo)
 
   Level: developer
 
-.keywords: log, event, copy
 .seealso: PetscEventPerfInfoClear()
 @*/
 PetscErrorCode PetscEventPerfInfoCopy(PetscEventPerfInfo *eventInfo,PetscEventPerfInfo *outInfo)
@@ -187,7 +209,6 @@ PetscErrorCode PetscEventPerfInfoCopy(PetscEventPerfInfo *eventInfo,PetscEventPe
 
   Level: developer
 
-.keywords: log, event, size, ensure
 .seealso: PetscEventPerfLogCreate()
 @*/
 PetscErrorCode PetscEventPerfLogEnsureSize(PetscEventPerfLog eventLog,int size)
@@ -198,7 +219,7 @@ PetscErrorCode PetscEventPerfLogEnsureSize(PetscEventPerfLog eventLog,int size)
   PetscFunctionBegin;
   while (size > eventLog->maxEvents) {
     ierr = PetscMalloc1(eventLog->maxEvents*2,&eventInfo);CHKERRQ(ierr);
-    ierr = PetscMemcpy(eventInfo,eventLog->eventInfo,eventLog->maxEvents * sizeof(PetscEventPerfInfo));CHKERRQ(ierr);
+    ierr = PetscArraycpy(eventInfo,eventLog->eventInfo,eventLog->maxEvents);CHKERRQ(ierr);
     ierr = PetscFree(eventLog->eventInfo);CHKERRQ(ierr);
     eventLog->eventInfo  = eventInfo;
     eventLog->maxEvents *= 2;
@@ -267,8 +288,7 @@ PetscErrorCode PetscLogEventEndMPE(PetscLogEvent event,int t,PetscObject o1,Pets
 
   Level: developer
 
-.keywords: log, event, register
-.seealso: PetscLogEventBegin(), PetscLogEventEnd(), PetscLogFlops(), 
+.seealso: PetscLogEventBegin(), PetscLogEventEnd(), PetscLogFlops(),
           PetscEventLogActivate(), PetscEventLogDeactivate()
 @*/
 PetscErrorCode PetscEventRegLogRegister(PetscEventRegLog eventLog,const char ename[],PetscClassId classid,PetscLogEvent *event)
@@ -285,7 +305,7 @@ PetscErrorCode PetscEventRegLogRegister(PetscEventRegLog eventLog,const char ena
   e = eventLog->numEvents++;
   if (eventLog->numEvents > eventLog->maxEvents) {
     ierr = PetscMalloc1(eventLog->maxEvents*2,&eventInfo);CHKERRQ(ierr);
-    ierr = PetscMemcpy(eventInfo,eventLog->eventInfo,eventLog->maxEvents * sizeof(PetscEventRegInfo));CHKERRQ(ierr);
+    ierr = PetscArraycpy(eventInfo,eventLog->eventInfo,eventLog->maxEvents);CHKERRQ(ierr);
     ierr = PetscFree(eventLog->eventInfo);CHKERRQ(ierr);
     eventLog->eventInfo  = eventInfo;
     eventLog->maxEvents *= 2;
@@ -342,7 +362,6 @@ PetscErrorCode PetscEventRegLogRegister(PetscEventRegLog eventLog,const char ena
 
   Level: developer
 
-.keywords: log, event, activate
 .seealso: PetscEventPerfLogDeactivate()
 @*/
 PetscErrorCode PetscEventPerfLogActivate(PetscEventPerfLog eventLog,PetscLogEvent event)
@@ -375,7 +394,6 @@ PetscErrorCode PetscEventPerfLogActivate(PetscEventPerfLog eventLog,PetscLogEven
 
   Level: developer
 
-.keywords: log, event, activate
 .seealso: PetscEventPerfLogActivate()
 @*/
 PetscErrorCode PetscEventPerfLogDeactivate(PetscEventPerfLog eventLog,PetscLogEvent event)
@@ -452,7 +470,6 @@ PetscErrorCode PetscEventPerfLogDeactivateClass(PetscEventPerfLog eventLog,Petsc
 
   Level: developer
 
-.keywords: log, stage
 .seealso: PetscEventRegLogRegister()
 @*/
 PetscErrorCode  PetscEventRegLogGetEvent(PetscEventRegLog eventLog,const char name[],PetscLogEvent *event)
@@ -490,7 +507,6 @@ PetscErrorCode  PetscEventRegLogGetEvent(PetscEventRegLog eventLog,const char na
 
   Level: developer
 
-.keywords: log, visible, event
 .seealso: PetscEventPerfLogGetVisible(), PetscEventRegLogRegister(), PetscStageLogGetEventLog()
 @*/
 PetscErrorCode PetscEventPerfLogSetVisible(PetscEventPerfLog eventLog,PetscLogEvent event,PetscBool isVisible)
@@ -517,7 +533,6 @@ PetscErrorCode PetscEventPerfLogSetVisible(PetscEventPerfLog eventLog,PetscLogEv
 
   Level: developer
 
-.keywords: log, visible, event
 .seealso: PetscEventPerfLogSetVisible(), PetscEventRegLogRegister(), PetscStageLogGetEventLog()
 @*/
 PetscErrorCode PetscEventPerfLogGetVisible(PetscEventPerfLog eventLog,PetscLogEvent event,PetscBool  *isVisible)
@@ -608,6 +623,7 @@ PetscErrorCode PetscLogEventSynchronize(PetscLogEvent event,MPI_Comm comm)
   if (!eventRegLog->eventInfo[event].collective) PetscFunctionReturn(0);
   ierr = PetscStageLogGetCurrent(stageLog,&stage);CHKERRQ(ierr);
   ierr = PetscStageLogGetEventPerfLog(stageLog,stage,&eventLog);CHKERRQ(ierr);
+  if (eventLog->eventInfo[event].depth > 0) PetscFunctionReturn(0);
 
   PetscTimeSubtract(&time);
   ierr = MPI_Barrier(comm);CHKERRQ(ierr);
@@ -627,11 +643,12 @@ PetscErrorCode PetscLogEventBeginDefault(PetscLogEvent event,int t,PetscObject o
   ierr = PetscLogGetStageLog(&stageLog);CHKERRQ(ierr);
   ierr = PetscStageLogGetCurrent(stageLog,&stage);CHKERRQ(ierr);
   ierr = PetscStageLogGetEventPerfLog(stageLog,stage,&eventLog);CHKERRQ(ierr);
+  /* Synchronization */
+  ierr = PetscLogEventSynchronize(event,PetscObjectComm(o1));CHKERRQ(ierr);
   /* Check for double counting */
   eventLog->eventInfo[event].depth++;
   if (eventLog->eventInfo[event].depth > 1) PetscFunctionReturn(0);
   /* Log the performance info */
-  ierr = PetscLogEventSynchronize(event,PetscObjectComm(o1));CHKERRQ(ierr);
   eventLog->eventInfo[event].count++;
   eventLog->eventInfo[event].timeTmp = 0.0;
   PetscTimeSubtract(&eventLog->eventInfo[event].timeTmp);
@@ -640,6 +657,24 @@ PetscErrorCode PetscLogEventBeginDefault(PetscLogEvent event,int t,PetscObject o
   eventLog->eventInfo[event].numMessages   -= petsc_irecv_ct  + petsc_isend_ct  + petsc_recv_ct  + petsc_send_ct;
   eventLog->eventInfo[event].messageLength -= petsc_irecv_len + petsc_isend_len + petsc_recv_len + petsc_send_len;
   eventLog->eventInfo[event].numReductions -= petsc_allreduce_ct + petsc_gather_ct + petsc_scatter_ct;
+  if (PetscLogMemory) {
+    PetscLogDouble usage;
+    ierr = PetscMemoryGetCurrentUsage(&usage);CHKERRQ(ierr);
+    eventLog->eventInfo[event].memIncrease -= usage;
+    ierr = PetscMallocGetCurrentUsage(&usage);CHKERRQ(ierr);
+    eventLog->eventInfo[event].mallocSpace -= usage;
+    ierr = PetscMallocGetMaximumUsage(&usage);CHKERRQ(ierr);
+    eventLog->eventInfo[event].mallocIncrease -= usage;
+    ierr = PetscMallocPushMaximumUsage((int)event);CHKERRQ(ierr);
+  }
+  #if defined(PETSC_HAVE_VIENNACL) || defined(PETSC_HAVE_CUDA) 
+  eventLog->eventInfo[event].CpuToGpuCount -= petsc_ctog_ct;
+  eventLog->eventInfo[event].GpuToCpuCount -= petsc_gtoc_ct;
+  eventLog->eventInfo[event].CpuToGpuSize  -= petsc_ctog_sz;
+  eventLog->eventInfo[event].GpuToCpuSize  -= petsc_gtoc_sz;
+  eventLog->eventInfo[event].GpuFlops      -= petsc_gflops;
+  eventLog->eventInfo[event].GpuTime       -= petsc_gtime;
+  #endif
   PetscFunctionReturn(0);
 }
 
@@ -668,6 +703,25 @@ PetscErrorCode PetscLogEventEndDefault(PetscLogEvent event,int t,PetscObject o1,
   eventLog->eventInfo[event].numMessages   += petsc_irecv_ct  + petsc_isend_ct  + petsc_recv_ct  + petsc_send_ct;
   eventLog->eventInfo[event].messageLength += petsc_irecv_len + petsc_isend_len + petsc_recv_len + petsc_send_len;
   eventLog->eventInfo[event].numReductions += petsc_allreduce_ct + petsc_gather_ct + petsc_scatter_ct;
+  if (PetscLogMemory) {
+    PetscLogDouble usage,musage;
+    ierr = PetscMemoryGetCurrentUsage(&usage);CHKERRQ(ierr);
+    eventLog->eventInfo[event].memIncrease += usage;
+    ierr = PetscMallocGetCurrentUsage(&usage);CHKERRQ(ierr);
+    eventLog->eventInfo[event].mallocSpace += usage;
+    ierr = PetscMallocPopMaximumUsage((int)event,&musage);CHKERRQ(ierr);
+    eventLog->eventInfo[event].mallocIncreaseEvent = PetscMax(musage-usage,eventLog->eventInfo[event].mallocIncreaseEvent);
+    ierr = PetscMallocGetMaximumUsage(&usage);CHKERRQ(ierr);
+    eventLog->eventInfo[event].mallocIncrease += usage;
+  }
+  #if defined(PETSC_HAVE_VIENNACL) || defined(PETSC_HAVE_CUDA) 
+  eventLog->eventInfo[event].CpuToGpuCount += petsc_ctog_ct;
+  eventLog->eventInfo[event].GpuToCpuCount += petsc_gtoc_ct;
+  eventLog->eventInfo[event].CpuToGpuSize  += petsc_ctog_sz;
+  eventLog->eventInfo[event].GpuToCpuSize  += petsc_gtoc_sz;
+  eventLog->eventInfo[event].GpuFlops      += petsc_gflops;
+  eventLog->eventInfo[event].GpuTime       += petsc_gtime;
+  #endif
   PetscFunctionReturn(0);
 }
 
@@ -687,7 +741,7 @@ PetscErrorCode PetscLogEventBeginComplete(PetscLogEvent event,int t,PetscObject 
   if (petsc_numActions >= petsc_maxActions) {
     PetscTime(&start);
     ierr = PetscMalloc1(petsc_maxActions*2,&tmpAction);CHKERRQ(ierr);
-    ierr = PetscMemcpy(tmpAction,petsc_actions,petsc_maxActions * sizeof(Action));CHKERRQ(ierr);
+    ierr = PetscArraycpy(tmpAction,petsc_actions,petsc_maxActions);CHKERRQ(ierr);
     ierr = PetscFree(petsc_actions);CHKERRQ(ierr);
 
     petsc_actions     = tmpAction;
@@ -747,7 +801,7 @@ PetscErrorCode PetscLogEventEndComplete(PetscLogEvent event,int t,PetscObject o1
   if (petsc_numActions >= petsc_maxActions) {
     PetscTime(&start);
     ierr = PetscMalloc1(petsc_maxActions*2,&tmpAction);CHKERRQ(ierr);
-    ierr = PetscMemcpy(tmpAction,petsc_actions,petsc_maxActions * sizeof(Action));CHKERRQ(ierr);
+    ierr = PetscArraycpy(tmpAction,petsc_actions,petsc_maxActions);CHKERRQ(ierr);
     ierr = PetscFree(petsc_actions);CHKERRQ(ierr);
 
     petsc_actions     = tmpAction;
@@ -857,5 +911,76 @@ PetscErrorCode PetscLogEventEndTrace(PetscLogEvent event,int t,PetscObject o1,Pe
   ierr = PetscFPrintf(PETSC_COMM_SELF,petsc_tracefile,"%s[%d] %g Event end: %s\n",petsc_tracespace,rank,cur_time-petsc_tracetime,eventRegLog->eventInfo[event].name);CHKERRQ(ierr);
   err  = fflush(petsc_tracefile);
   if (err) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_SYS,"fflush() failed on file");
+  PetscFunctionReturn(0);
+}
+
+/*@C
+  PetscLogEventSetDof - Set the nth number of degrees of freedom associated with this event
+
+  Not Collective
+
+  Input Parameters:
++ event - The event id to log
+. n     - The dof index, in [0, 8)
+- dof   - The number of dofs
+
+  Database Options:
+. -log_view - Activates log summary
+
+  Note: This is to enable logging of convergence
+
+  Level: developer
+
+.seealso: PetscLogEventSetError(), PetscEventRegLogRegister(), PetscStageLogGetEventLog()
+@*/
+PetscErrorCode PetscLogEventSetDof(PetscLogEvent event, PetscInt n, PetscLogDouble dof)
+{
+  PetscStageLog     stageLog;
+  PetscEventPerfLog eventLog = NULL;
+  int               stage;
+  PetscErrorCode    ierr;
+
+  PetscFunctionBegin;
+  if ((n < 0) || (n > 7)) SETERRQ1(PETSC_COMM_SELF, PETSC_ERR_ARG_OUTOFRANGE, "Error index %D is not in [0, 8)", n);
+  ierr = PetscLogGetStageLog(&stageLog);CHKERRQ(ierr);
+  ierr = PetscStageLogGetCurrent(stageLog,&stage);CHKERRQ(ierr);
+  ierr = PetscStageLogGetEventPerfLog(stageLog,stage,&eventLog);CHKERRQ(ierr);
+  eventLog->eventInfo[event].dof[n] = dof;
+  PetscFunctionReturn(0);
+}
+
+/*@C
+  PetscLogEventSetError - Set the nth error associated with this event
+
+  Not Collective
+
+  Input Parameters:
++ event - The event id to log
+. n     - The error index, in [0, 8)
+. error - The error
+
+  Database Options:
+. -log_view - Activates log summary
+
+  Note: This is to enable logging of convergence, and enable users to interpret the errors as they wish. For example,
+  as different norms, or as errors for different fields
+
+  Level: developer
+
+.seealso: PetscLogEventSetDof(), PetscEventRegLogRegister(), PetscStageLogGetEventLog()
+@*/
+PetscErrorCode PetscLogEventSetError(PetscLogEvent event, PetscInt n, PetscLogDouble error)
+{
+  PetscStageLog     stageLog;
+  PetscEventPerfLog eventLog = NULL;
+  int               stage;
+  PetscErrorCode    ierr;
+
+  PetscFunctionBegin;
+  if ((n < 0) || (n > 7)) SETERRQ1(PETSC_COMM_SELF, PETSC_ERR_ARG_OUTOFRANGE, "Error index %D is not in [0, 8)", n);
+  ierr = PetscLogGetStageLog(&stageLog);CHKERRQ(ierr);
+  ierr = PetscStageLogGetCurrent(stageLog,&stage);CHKERRQ(ierr);
+  ierr = PetscStageLogGetEventPerfLog(stageLog,stage,&eventLog);CHKERRQ(ierr);
+  eventLog->eventInfo[event].errors[n] = error;
   PetscFunctionReturn(0);
 }

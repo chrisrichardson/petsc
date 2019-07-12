@@ -47,7 +47,7 @@ int main(int argc,char **argv)
   for (i=0; i<nrows; i++) {
     for (j=0; j<ncols; j++) {
       ierr         = PetscRandomGetValue(r,&rval);CHKERRQ(ierr);
-      v[i*ncols+j] = rval; 
+      v[i*ncols+j] = rval;
     }
   }
   ierr = MatSetValues(A,nrows,rows,ncols,cols,v,INSERT_VALUES);CHKERRQ(ierr);
@@ -76,7 +76,7 @@ int main(int argc,char **argv)
   ierr = MatDestroy(&C);CHKERRQ(ierr);
 
   /* Test MatMatMult() */
-  if (Test_MatMatMult) { 
+  if (Test_MatMatMult) {
 #if !defined(PETSC_HAVE_ELEMENTAL)
     if (size > 1) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_SUP,"This test requires ELEMENTAL");
 #endif
@@ -84,16 +84,20 @@ int main(int argc,char **argv)
     ierr = MatMatMult(B,A,MAT_INITIAL_MATRIX,fill,&C);CHKERRQ(ierr); /* C = B*A = A^T*A */
     ierr = MatMatMult(B,A,MAT_REUSE_MATRIX,fill,&C);CHKERRQ(ierr);
 
+    /* Test MatDuplicate for matrix product */
+    ierr = MatDuplicate(C,MAT_COPY_VALUES,&D);CHKERRQ(ierr);
+    ierr = MatDestroy(&D);CHKERRQ(ierr);
+
     /* Test B*A*x = C*x for n random vector x */
     ierr = MatMatMultEqual(B,A,C,10,&equal);CHKERRQ(ierr);
     if (!equal) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_PLIB,"B*A*x != C*x");
     ierr = MatDestroy(&C);CHKERRQ(ierr);
 
-    ierr = MatMatMultSymbolic(B,A,fill,&C);CHKERRQ(ierr); 
+    ierr = MatMatMultSymbolic(B,A,fill,&C);CHKERRQ(ierr);
     for (i=0; i<2; i++) {
       /* Repeat the numeric product to test reuse of the previous symbolic product */
       ierr = MatMatMultNumeric(B,A,C);CHKERRQ(ierr);
-   
+
       ierr = MatMatMultEqual(B,A,C,10,&equal);CHKERRQ(ierr);
       if (!equal) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_PLIB,"B*A*x != C*x");
     }
@@ -106,7 +110,11 @@ int main(int argc,char **argv)
   if (!iselemental) {
     ierr = MatTransposeMatMult(A,A,MAT_INITIAL_MATRIX,fill,&D);CHKERRQ(ierr); /* D = A^T*A */
     ierr = MatTransposeMatMult(A,A,MAT_REUSE_MATRIX,fill,&D);CHKERRQ(ierr);
-    /* ierr = MatView(D,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr); */
+
+    /* Test MatDuplicate for matrix product */
+    ierr = MatDuplicate(D,MAT_COPY_VALUES,&C);CHKERRQ(ierr);
+    ierr = MatDestroy(&C);CHKERRQ(ierr);
+
     ierr = MatTransposeMatMultEqual(A,A,D,10,&equal);CHKERRQ(ierr);
     if (!equal) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_PLIB,"D*x != A^T*A*x");
     ierr = MatDestroy(&D);CHKERRQ(ierr);
@@ -140,6 +148,37 @@ int main(int argc,char **argv)
     ierr = MatDestroy(&B);CHKERRQ(ierr);
   }
 
+  /* Test MatMatTransposeMult() */
+  if (!iselemental) {
+    PetscReal diff, scale;
+    PetscInt  am, an, aM, aN;
+
+    ierr = MatGetLocalSize(A, &am, &an);CHKERRQ(ierr);
+    ierr = MatGetSize(A, &aM, &aN);CHKERRQ(ierr);
+    ierr = MatCreateDense(PetscObjectComm((PetscObject)A),PETSC_DECIDE, an, aM + 10, aN, NULL, &B);CHKERRQ(ierr);
+    ierr = MatSetRandom(B, NULL);CHKERRQ(ierr);
+    ierr = MatAssemblyBegin(B, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+    ierr = MatAssemblyEnd(B, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+    ierr = MatMatTransposeMult(A,B,MAT_INITIAL_MATRIX,fill,&D);CHKERRQ(ierr); /* D = A*A^T */
+
+    /* Test MatDuplicate for matrix product */
+    ierr = MatDuplicate(D,MAT_COPY_VALUES,&C);CHKERRQ(ierr);
+
+    ierr = MatMatTransposeMult(A,B,MAT_REUSE_MATRIX,fill,&D);CHKERRQ(ierr);
+    ierr = MatAXPY(C, -1., D, SAME_NONZERO_PATTERN);CHKERRQ(ierr);
+
+    ierr = MatNorm(C, NORM_FROBENIUS, &diff);CHKERRQ(ierr);
+    ierr = MatNorm(D, NORM_FROBENIUS, &scale);CHKERRQ(ierr);
+    if (diff > PETSC_SMALL * scale) SETERRQ(PetscObjectComm((PetscObject)D), PETSC_ERR_PLIB, "MatMatTransposeMult() differs between MAT_INITIAL_MATRIX and MAT_REUSE_MATRIX");
+    ierr = MatDestroy(&C);CHKERRQ(ierr);
+
+    ierr = MatMatTransposeMultEqual(A,B,D,10,&equal);CHKERRQ(ierr);
+    if (!equal) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_PLIB,"D*x != A^T*A*x");
+    ierr = MatDestroy(&D);CHKERRQ(ierr);
+    ierr = MatDestroy(&B);CHKERRQ(ierr);
+
+  }
+
   ierr = MatDestroy(&A);CHKERRQ(ierr);
   ierr = PetscFree(v);CHKERRQ(ierr);
   ierr = PetscFinalize();
@@ -155,5 +194,23 @@ int main(int argc,char **argv)
       suffix: 2
       nsize: 2
       output_file: output/ex104.out
+
+    test:
+      suffix: 3
+      nsize: 4
+      output_file: output/ex104.out
+      args: -M 23 -N 31
+
+    test:
+      suffix: 4
+      nsize: 4
+      output_file: output/ex104.out
+      args: -M 23 -N 31 -matmattransmult_mpidense_mpidense_via cyclic
+
+    test:
+      suffix: 5
+      nsize: 4
+      output_file: output/ex104.out
+      args: -M 23 -N 31 -matmattransmult_mpidense_mpidense_via allgatherv
 
 TEST*/

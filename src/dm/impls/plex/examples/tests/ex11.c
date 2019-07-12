@@ -10,7 +10,7 @@ static PetscErrorCode TestInsertion()
   PetscErrorCode ierr;
 
   PetscFunctionBegin;
-  ierr = DMLabelCreate("Test Label", &label);CHKERRQ(ierr);
+  ierr = DMLabelCreate(PETSC_COMM_SELF, "Test Label", &label);CHKERRQ(ierr);
   ierr = DMLabelSetDefaultValue(label, -100);CHKERRQ(ierr);
   for (i = 0; i < N; ++i) {
     ierr = DMLabelSetValue(label, i, values[i%5]);CHKERRQ(ierr);
@@ -60,23 +60,24 @@ static PetscErrorCode TestInsertion()
 
 static PetscErrorCode TestEmptyStrata(MPI_Comm comm)
 {
-  DM             dm, dmDist;
-  PetscInt       c0[6]  = {2,3,6,7,9,11};
-  PetscInt       c1[6]  = {4,5,7,8,10,12};
-  PetscInt       c2[4]  = {13,15,19,21};
-  PetscInt       c3[4]  = {14,16,20,22};
-  PetscInt       c4[4]  = {15,17,21,23};
-  PetscInt       c5[4]  = {16,18,22,24};
-  PetscInt       c6[4]  = {13,14,19,20};
-  PetscInt       c7[4]  = {15,16,21,22};
-  PetscInt       c8[4]  = {17,18,23,24};
-  PetscInt       c9[4]  = {13,14,15,16};
-  PetscInt       c10[4] = {15,16,17,18};
-  PetscInt       c11[4] = {19,20,21,22};
-  PetscInt       c12[4] = {21,22,23,24};
-  PetscInt       dim    = 3;
-  PetscMPIInt    rank;
-  PetscErrorCode ierr;
+  DM               dm, dmDist;
+  PetscPartitioner part;
+  PetscInt         c0[6]  = {2,3,6,7,9,11};
+  PetscInt         c1[6]  = {4,5,7,8,10,12};
+  PetscInt         c2[4]  = {13,15,19,21};
+  PetscInt         c3[4]  = {14,16,20,22};
+  PetscInt         c4[4]  = {15,17,21,23};
+  PetscInt         c5[4]  = {16,18,22,24};
+  PetscInt         c6[4]  = {13,14,19,20};
+  PetscInt         c7[4]  = {15,16,21,22};
+  PetscInt         c8[4]  = {17,18,23,24};
+  PetscInt         c9[4]  = {13,14,15,16};
+  PetscInt         c10[4] = {15,16,17,18};
+  PetscInt         c11[4] = {19,20,21,22};
+  PetscInt         c12[4] = {21,22,23,24};
+  PetscInt         dim    = 3;
+  PetscMPIInt      rank;
+  PetscErrorCode   ierr;
 
   PetscFunctionBegin;
   ierr = MPI_Comm_rank(comm, &rank);CHKERRQ(ierr);
@@ -118,25 +119,44 @@ static PetscErrorCode TestEmptyStrata(MPI_Comm comm)
   }
   ierr = DMPlexSymmetrize(dm);CHKERRQ(ierr);
   /* Create a user managed depth label, so that we can leave out edges */
-  if (!rank) {
-    DMLabel  label;
-    PetscInt i;
+  {
+    DMLabel label;
+    PetscInt numValues, maxValues = 0, v;
 
     ierr = DMCreateLabel(dm, "depth");CHKERRQ(ierr);
     ierr = DMPlexGetDepthLabel(dm, &label);CHKERRQ(ierr);
-    for (i = 0; i < 25; ++i) {
-      if (i < 2)       {ierr = DMLabelSetValue(label, i, 3);CHKERRQ(ierr);}
-      else if (i < 13) {ierr = DMLabelSetValue(label, i, 2);CHKERRQ(ierr);}
-      else             {
-        if (i==13) {ierr = DMLabelAddStratum(label, 1);CHKERRQ(ierr);}
-        ierr = DMLabelSetValue(label, i, 0);CHKERRQ(ierr);
+    if (!rank) {
+      PetscInt i;
+
+      for (i = 0; i < 25; ++i) {
+        if (i < 2)       {ierr = DMLabelSetValue(label, i, 3);CHKERRQ(ierr);}
+        else if (i < 13) {ierr = DMLabelSetValue(label, i, 2);CHKERRQ(ierr);}
+        else             {
+          if (i==13) {ierr = DMLabelAddStratum(label, 1);CHKERRQ(ierr);}
+          ierr = DMLabelSetValue(label, i, 0);CHKERRQ(ierr);
+        }
       }
     }
+    ierr = DMLabelGetNumValues(label, &numValues);CHKERRQ(ierr);
+    ierr = MPI_Allreduce(&numValues, &maxValues, 1, MPIU_INT, MPI_MAX, PetscObjectComm((PetscObject) dm));CHKERRQ(ierr);
+    for (v = numValues; v < maxValues; ++v) {ierr = DMLabelAddStratum(label,v);CHKERRQ(ierr);}
   }
+  {
+    DMLabel label;
+    ierr = DMPlexGetDepthLabel(dm, &label);CHKERRQ(ierr);
+    ierr = DMLabelView(label, PETSC_VIEWER_STDOUT_(comm));CHKERRQ(ierr);
+  }
+  ierr = DMPlexGetPartitioner(dm,&part);CHKERRQ(ierr);
+  ierr = PetscPartitionerSetFromOptions(part);CHKERRQ(ierr);
   ierr = DMPlexDistribute(dm, 1, NULL, &dmDist);CHKERRQ(ierr);
   if (dmDist) {
     ierr = DMDestroy(&dm);CHKERRQ(ierr);CHKERRQ(ierr);
     dm   = dmDist;
+  }
+  {
+    DMLabel label;
+    ierr = DMPlexGetDepthLabel(dm, &label);CHKERRQ(ierr);
+    ierr = DMLabelView(label, PETSC_VIEWER_STDOUT_(comm));CHKERRQ(ierr);
   }
   /* Create a cell vector */
   {
@@ -146,7 +166,8 @@ static PetscErrorCode TestEmptyStrata(MPI_Comm comm)
     PetscInt     dof[]     = {0,0,0,1};
     PetscInt     N;
 
-    ierr = DMPlexCreateSection(dm, dim, 1, numComp, dof, 0, NULL, NULL, NULL, NULL, &s);CHKERRQ(ierr);
+    ierr = DMSetNumFields(dm, 1);CHKERRQ(ierr);
+    ierr = DMPlexCreateSection(dm, NULL, numComp, dof, 0, NULL, NULL, NULL, NULL, &s);CHKERRQ(ierr);
     ierr = DMSetSection(dm, s);CHKERRQ(ierr);
     ierr = PetscSectionDestroy(&s);CHKERRQ(ierr);
     ierr = DMCreateGlobalVector(dm, &v);CHKERRQ(ierr);
@@ -163,14 +184,15 @@ static PetscErrorCode TestEmptyStrata(MPI_Comm comm)
 
 static PetscErrorCode TestDistribution(MPI_Comm comm)
 {
-  DM             dm, dmDist;
-  DMLabel        label;
-  char           filename[2048];
-  const char    *name    = "test label";
-  PetscInt       overlap = 0, cStart, cEnd, c;
-  PetscMPIInt    rank;
-  PetscBool      flg;
-  PetscErrorCode ierr;
+  DM               dm, dmDist;
+  PetscPartitioner part;
+  DMLabel          label;
+  char             filename[2048];
+  const char      *name    = "test label";
+  PetscInt         overlap = 0, cStart, cEnd, c;
+  PetscMPIInt      rank;
+  PetscBool        flg;
+  PetscErrorCode   ierr;
 
   PetscFunctionBegin;
   ierr = MPI_Comm_rank(comm, &rank);CHKERRQ(ierr);
@@ -178,8 +200,7 @@ static PetscErrorCode TestDistribution(MPI_Comm comm)
   if (!flg) PetscFunctionReturn(0);
   ierr = PetscOptionsGetInt(NULL, NULL, "-overlap", &overlap, NULL);CHKERRQ(ierr);
   ierr = DMPlexCreateFromFile(comm, filename, PETSC_TRUE, &dm); CHKERRQ(ierr);
-  ierr = DMPlexSetAdjacencyUseCone(dm, PETSC_TRUE);CHKERRQ(ierr);
-  ierr = DMPlexSetAdjacencyUseClosure(dm, PETSC_FALSE);CHKERRQ(ierr);
+  ierr = DMSetBasicAdjacency(dm, PETSC_TRUE, PETSC_FALSE);CHKERRQ(ierr);
   ierr = DMCreateLabel(dm, name);CHKERRQ(ierr);
   ierr = DMGetLabel(dm, name, &label);CHKERRQ(ierr);
   ierr = DMPlexGetHeightStratum(dm, 0, &cStart, &cEnd);CHKERRQ(ierr);
@@ -187,6 +208,8 @@ static PetscErrorCode TestDistribution(MPI_Comm comm)
     ierr = DMLabelSetValue(label, c, c);CHKERRQ(ierr);
   }
   ierr = DMLabelView(label, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
+  ierr = DMPlexGetPartitioner(dm,&part);CHKERRQ(ierr);
+  ierr = PetscPartitionerSetFromOptions(part);CHKERRQ(ierr);
   ierr = DMPlexDistribute(dm, overlap, NULL, &dmDist);CHKERRQ(ierr);
   if (dmDist) {
     ierr = DMDestroy(&dm);CHKERRQ(ierr);
@@ -219,7 +242,27 @@ int main(int argc, char **argv)
   test:
     suffix: 1
     nsize: 2
-    requires: chaco exodusii
-    args: -filename ${wPETSC_DIR}/share/petsc/datafiles/meshes/2Dgrd.exo -overlap 1
+    args: -petscpartitioner_type simple
+
+  testset:
+    suffix: gmsh
+    args: -filename ${wPETSC_DIR}/share/petsc/datafiles/meshes/square.msh -petscpartitioner_type simple
+    test:
+      suffix: 1
+      nsize: 1
+    test:
+      suffix: 2
+      nsize: 2
+
+  testset:
+    suffix: exodusii
+    requires: exodusii
+    args: -filename ${wPETSC_DIR}/share/petsc/datafiles/meshes/2Dgrd.exo -petscpartitioner_type simple
+    test:
+      suffix: 1
+      nsize: 1
+    test:
+      suffix: 2
+      nsize: 2
 
 TEST*/

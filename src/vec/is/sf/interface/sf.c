@@ -15,7 +15,7 @@ const char *const PetscSFDuplicateOptions[] = {"CONFONLY","RANKS","GRAPH","Petsc
 /*@
    PetscSFCreate - create a star forest communication context
 
-   Collective on MPI_Comm
+   Collective
 
    Input Arguments:
 .  comm - communicator on which the star forest will operate
@@ -111,8 +111,6 @@ PetscErrorCode PetscSFReset(PetscSF sf)
 
   Level: intermediate
 
-.keywords: PetscSF, set, type
-
 .seealso: PetscSFType, PetscSFCreate()
 @*/
 PetscErrorCode PetscSFSetType(PetscSF sf,PetscSFType type)
@@ -150,7 +148,6 @@ PetscErrorCode PetscSFSetType(PetscSF sf,PetscSFType type)
 
   Level: intermediate
 
-.keywords: PetscSF, get, type
 .seealso: PetscSFSetType(), PetscSFCreate()
 @*/
 PetscErrorCode PetscSFGetType(PetscSF sf, PetscSFType *type)
@@ -229,8 +226,6 @@ PetscErrorCode PetscSFSetUp(PetscSF sf)
 -  -sf_rank_order - sort composite points for gathers and scatters in rank order, gathers are non-deterministic otherwise
 
    Level: intermediate
-
-.keywords: KSP, set, from, options, database
 
 .seealso: PetscSFWindowSetSyncType()
 @*/
@@ -346,7 +341,7 @@ PetscErrorCode PetscSFSetGraph(PetscSF sf,PetscInt nroots,PetscInt nleaves,const
     switch (localmode) {
     case PETSC_COPY_VALUES:
       ierr = PetscMalloc1(nleaves,&sf->mine_alloc);CHKERRQ(ierr);
-      ierr = PetscMemcpy(sf->mine_alloc,ilocal,nleaves*sizeof(*ilocal));CHKERRQ(ierr);
+      ierr = PetscArraycpy(sf->mine_alloc,ilocal,nleaves);CHKERRQ(ierr);
       sf->mine = sf->mine_alloc;
       break;
     case PETSC_OWN_POINTER:
@@ -364,7 +359,7 @@ PetscErrorCode PetscSFSetGraph(PetscSF sf,PetscInt nroots,PetscInt nleaves,const
   switch (remotemode) {
   case PETSC_COPY_VALUES:
     ierr = PetscMalloc1(nleaves,&sf->remote_alloc);CHKERRQ(ierr);
-    ierr = PetscMemcpy(sf->remote_alloc,iremote,nleaves*sizeof(*iremote));CHKERRQ(ierr);
+    ierr = PetscArraycpy(sf->remote_alloc,iremote,nleaves);CHKERRQ(ierr);
     sf->remote = sf->remote_alloc;
     break;
   case PETSC_OWN_POINTER:
@@ -602,7 +597,7 @@ PetscErrorCode PetscSFView(PetscSF sf,PetscViewer viewer)
     if (format == PETSC_VIEWER_ASCII_INFO_DETAIL) {
       PetscMPIInt *tmpranks,*perm;
       ierr = PetscMalloc2(sf->nranks,&tmpranks,sf->nranks,&perm);CHKERRQ(ierr);
-      ierr = PetscMemcpy(tmpranks,sf->ranks,sf->nranks*sizeof(tmpranks[0]));CHKERRQ(ierr);
+      ierr = PetscArraycpy(tmpranks,sf->ranks,sf->nranks);CHKERRQ(ierr);
       for (i=0; i<sf->nranks; i++) perm[i] = i;
       ierr = PetscSortMPIIntWithArray(sf->nranks,tmpranks,perm);CHKERRQ(ierr);
       ierr = PetscViewerASCIISynchronizedPrintf(viewer,"[%d] Roots referenced by my leaves, by rank\n",rank);CHKERRQ(ierr);
@@ -655,6 +650,41 @@ PetscErrorCode PetscSFGetRanks(PetscSF sf,PetscInt *nranks,const PetscMPIInt **r
   PetscFunctionReturn(0);
 }
 
+/*@C
+   PetscSFGetLeafRanks - Get leaf ranks referencing roots on this process
+
+   Not Collective
+
+   Input Arguments:
+.  sf - star forest
+
+   Output Arguments:
++  niranks - number of leaf ranks referencing roots on this process
+.  iranks - array of ranks
+.  ioffset - offset in irootloc for each rank (length niranks+1)
+-  irootloc - concatenated array holding local indices of roots referenced by each leaf rank
+
+   Level: developer
+
+.seealso: PetscSFGetRanks()
+@*/
+PetscErrorCode PetscSFGetLeafRanks(PetscSF sf,PetscInt *niranks,const PetscMPIInt **iranks,const PetscInt **ioffset,const PetscInt **irootloc)
+{
+  PetscErrorCode ierr;
+
+  PetscFunctionBegin;
+  PetscValidHeaderSpecific(sf,PETSCSF_CLASSID,1);
+  if (!sf->setupcalled) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_ARG_WRONGSTATE,"Must call PetscSFSetUp() before obtaining ranks");
+  if (sf->ops->GetLeafRanks) {
+    ierr = (sf->ops->GetLeafRanks)(sf,niranks,iranks,ioffset,irootloc);CHKERRQ(ierr);
+  } else {
+    PetscSFType type;
+    ierr = PetscSFGetType(sf,&type);CHKERRQ(ierr);
+    SETERRQ1(PETSC_COMM_SELF,PETSC_ERR_SUP,"PetscSFGetLeafRanks() is not supported on this StarForest type: %s", type);
+  }
+  PetscFunctionReturn(0);
+}
+
 static PetscBool InList(PetscMPIInt needle,PetscMPIInt n,const PetscMPIInt *list) {
   PetscInt i;
   for (i=0; i<n; i++) {
@@ -682,7 +712,8 @@ PetscErrorCode PetscSFSetUpRanks(PetscSF sf,MPI_Group dgroup)
   PetscTable         table;
   PetscTablePosition pos;
   PetscMPIInt        size,groupsize,*groupranks;
-  PetscInt           i,*rcount,*ranks;
+  PetscInt           *rcount,*ranks;
+  PetscInt           i, irank = -1,orank = -1;
 
   PetscFunctionBegin;
   PetscValidHeaderSpecific(sf,PETSCSF_CLASSID,1);
@@ -727,11 +758,12 @@ PetscErrorCode PetscSFSetUpRanks(PetscSF sf,MPI_Group dgroup)
     }
     if (sf->ndranks < i) {                         /* Swap ranks[sf->ndranks] with ranks[i] */
       PetscInt    tmprank,tmpcount;
-      tmprank = ranks[i];
-      tmpcount = rcount[i];
-      ranks[i] = ranks[sf->ndranks];
-      rcount[i] = rcount[sf->ndranks];
-      ranks[sf->ndranks] = tmprank;
+
+      tmprank             = ranks[i];
+      tmpcount            = rcount[i];
+      ranks[i]            = ranks[sf->ndranks];
+      rcount[i]           = rcount[sf->ndranks];
+      ranks[sf->ndranks]  = tmprank;
       rcount[sf->ndranks] = tmpcount;
       sf->ndranks++;
     }
@@ -745,13 +777,16 @@ PetscErrorCode PetscSFSetUpRanks(PetscSF sf,MPI_Group dgroup)
     sf->roffset[i+1] = sf->roffset[i] + rcount[i];
     rcount[i]        = 0;
   }
-  for (i=0; i<sf->nleaves; i++) {
-    PetscInt irank;
-    /* Search for index of iremote[i].rank in sf->ranks */
-    ierr = PetscFindMPIInt(sf->remote[i].rank,sf->ndranks,sf->ranks,&irank);CHKERRQ(ierr);
-    if (irank < 0) {
-      ierr = PetscFindMPIInt(sf->remote[i].rank,sf->nranks-sf->ndranks,sf->ranks+sf->ndranks,&irank);CHKERRQ(ierr);
-      if (irank >= 0) irank += sf->ndranks;
+  for (i=0, irank = -1, orank = -1; i<sf->nleaves; i++) {
+    /* short circuit */
+    if (orank != sf->remote[i].rank) {
+      /* Search for index of iremote[i].rank in sf->ranks */
+      ierr = PetscFindMPIInt(sf->remote[i].rank,sf->ndranks,sf->ranks,&irank);CHKERRQ(ierr);
+      if (irank < 0) {
+        ierr = PetscFindMPIInt(sf->remote[i].rank,sf->nranks-sf->ndranks,sf->ranks+sf->ndranks,&irank);CHKERRQ(ierr);
+        if (irank >= 0) irank += sf->ndranks;
+      }
+      orank = sf->remote[i].rank;
     }
     if (irank < 0) SETERRQ1(PETSC_COMM_SELF,PETSC_ERR_PLIB,"Could not find rank %D in array",sf->remote[i].rank);
     sf->rmine[sf->roffset[irank] + rcount[irank]]   = sf->mine ? sf->mine[i] : i;
@@ -927,8 +962,8 @@ PetscErrorCode PetscSFGetMultiSF(PetscSF sf,PetscSF *multi)
 
    Input Arguments:
 +  sf - original star forest
-.  nroots - number of roots to select on this process
--  selected - selected roots on this process
+.  nselected  - number of selected roots on this process
+-  selected   - indices of the selected roots on this process
 
    Output Arguments:
 .  newsf - new star forest
@@ -941,41 +976,55 @@ PetscErrorCode PetscSFGetMultiSF(PetscSF sf,PetscSF *multi)
 
 .seealso: PetscSFSetGraph(), PetscSFGetGraph()
 @*/
-PetscErrorCode PetscSFCreateEmbeddedSF(PetscSF sf,PetscInt nroots,const PetscInt *selected,PetscSF *newsf)
+PetscErrorCode PetscSFCreateEmbeddedSF(PetscSF sf,PetscInt nselected,const PetscInt *selected,PetscSF *newsf)
 {
-  PetscInt      *rootdata, *leafdata, *ilocal;
-  PetscSFNode   *iremote;
-  PetscInt       leafsize = 0, nleaves = 0, n, i;
-  PetscErrorCode ierr;
+  PetscInt          *rootdata,*leafdata,*new_ilocal;
+  PetscSFNode       *new_iremote;
+  const PetscInt    *ilocal;
+  const PetscSFNode *iremote;
+  PetscInt          nleaves,nroots,n,i,new_nleaves = 0;
+  PetscSF           tmpsf;
+  PetscErrorCode    ierr;
 
   PetscFunctionBegin;
   PetscValidHeaderSpecific(sf,PETSCSF_CLASSID,1);
   PetscSFCheckGraphSet(sf,1);
-  if (nroots) PetscValidPointer(selected,3);
+  if (nselected) PetscValidPointer(selected,3);
   PetscValidPointer(newsf,4);
-  if (sf->mine) for (i = 0; i < sf->nleaves; ++i) {leafsize = PetscMax(leafsize, sf->mine[i]+1);}
-  else leafsize = sf->nleaves;
-  ierr = PetscCalloc2(sf->nroots,&rootdata,leafsize,&leafdata);CHKERRQ(ierr);
-  for (i=0; i<nroots; ++i) rootdata[selected[i]] = 1;
-  ierr = PetscSFBcastBegin(sf,MPIU_INT,rootdata,leafdata);CHKERRQ(ierr);
-  ierr = PetscSFBcastEnd(sf,MPIU_INT,rootdata,leafdata);CHKERRQ(ierr);
-  for (i = 0; i < leafsize; ++i) nleaves += leafdata[i];
-  ierr = PetscMalloc1(nleaves,&ilocal);CHKERRQ(ierr);
-  ierr = PetscMalloc1(nleaves,&iremote);CHKERRQ(ierr);
-  for (i = 0, n = 0; i < sf->nleaves; ++i) {
-    const PetscInt lidx = sf->mine ? sf->mine[i] : i;
+  ierr = PetscLogEventBegin(PETSCSF_EmbedSF,sf,0,0,0);CHKERRQ(ierr);
 
-    if (leafdata[lidx]) {
-      ilocal[n]        = lidx;
-      iremote[n].rank  = sf->remote[i].rank;
-      iremote[n].index = sf->remote[i].index;
+  /* Find out which leaves (not leaf data items) are still connected to roots in the embedded sf */
+  ierr = PetscSFGetGraph(sf,&nroots,&nleaves,&ilocal,&iremote);CHKERRQ(ierr);
+  ierr = PetscSFDuplicate(sf,PETSCSF_DUPLICATE_RANKS,&tmpsf);CHKERRQ(ierr);
+  ierr = PetscSFSetGraph(tmpsf,nroots,nleaves,NULL/*contiguous*/,PETSC_USE_POINTER,iremote,PETSC_USE_POINTER);CHKERRQ(ierr);
+  ierr = PetscCalloc2(nroots,&rootdata,nleaves,&leafdata);CHKERRQ(ierr);
+  for (i=0; i<nselected; ++i) {
+    if (selected[i] < 0 || selected[i] >= nroots) SETERRQ2(PetscObjectComm((PetscObject)sf),PETSC_ERR_ARG_OUTOFRANGE,"Root index %D is not in [0,%D)",selected[i],nroots);
+    rootdata[selected[i]] = 1;
+  }
+
+  ierr = PetscSFBcastBegin(tmpsf,MPIU_INT,rootdata,leafdata);CHKERRQ(ierr);
+  ierr = PetscSFBcastEnd(tmpsf,MPIU_INT,rootdata,leafdata);CHKERRQ(ierr);
+  ierr = PetscSFDestroy(&tmpsf);CHKERRQ(ierr);
+
+  /* Build newsf with leaves that are still connected */
+  for (i = 0; i < nleaves; ++i) new_nleaves += leafdata[i];
+  ierr = PetscMalloc1(new_nleaves,&new_ilocal);CHKERRQ(ierr);
+  ierr = PetscMalloc1(new_nleaves,&new_iremote);CHKERRQ(ierr);
+  for (i = 0, n = 0; i < nleaves; ++i) {
+    if (leafdata[i]) {
+      new_ilocal[n]        = sf->mine ? sf->mine[i] : i;
+      new_iremote[n].rank  = sf->remote[i].rank;
+      new_iremote[n].index = sf->remote[i].index;
       ++n;
     }
   }
-  if (n != nleaves) SETERRQ2(PETSC_COMM_SELF, PETSC_ERR_PLIB, "There is a size mismatch in the SF embedding, %d != %d", n, nleaves);
-  ierr = PetscSFDuplicate(sf,PETSCSF_DUPLICATE_RANKS,newsf);CHKERRQ(ierr);
-  ierr = PetscSFSetGraph(*newsf,sf->nroots,nleaves,ilocal,PETSC_OWN_POINTER,iremote,PETSC_OWN_POINTER);CHKERRQ(ierr);
+  if (n != new_nleaves) SETERRQ2(PETSC_COMM_SELF,PETSC_ERR_PLIB,"There is a size mismatch in the SF embedding, %D != %D",n,new_nleaves);
+  ierr = PetscSFDuplicate(sf,PETSCSF_DUPLICATE_CONFONLY,newsf);CHKERRQ(ierr);
+  ierr = PetscSFSetGraph(*newsf,nroots,new_nleaves,new_ilocal,PETSC_OWN_POINTER,new_iremote,PETSC_OWN_POINTER);CHKERRQ(ierr);
   ierr = PetscFree2(rootdata,leafdata);CHKERRQ(ierr);
+  ierr = PetscSFSetUp(*newsf);CHKERRQ(ierr);
+  ierr = PetscLogEventEnd(PETSCSF_EmbedSF,sf,0,0,0);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
@@ -1083,6 +1132,68 @@ PetscErrorCode PetscSFBcastEnd(PetscSF sf,MPI_Datatype unit,const void *rootdata
 }
 
 /*@C
+   PetscSFBcastAndOpBegin - begin pointwise broadcast with root value being reduced to leaf value, to be concluded with call to PetscSFBcastAndOpEnd()
+
+   Collective on PetscSF
+
+   Input Arguments:
++  sf - star forest on which to communicate
+.  unit - data type associated with each node
+.  rootdata - buffer to broadcast
+-  op - operation to use for reduction
+
+   Output Arguments:
+.  leafdata - buffer to be reduced with values from each leaf's respective root
+
+   Level: intermediate
+
+.seealso: PetscSFBcastAndOpEnd(), PetscSFBcastBegin(), PetscSFBcastEnd()
+@*/
+PetscErrorCode PetscSFBcastAndOpBegin(PetscSF sf,MPI_Datatype unit,const void *rootdata,void *leafdata,MPI_Op op)
+{
+  PetscErrorCode ierr;
+
+  PetscFunctionBegin;
+  PetscValidHeaderSpecific(sf,PETSCSF_CLASSID,1);
+  ierr = PetscSFSetUp(sf);CHKERRQ(ierr);
+  ierr = PetscLogEventBegin(PETSCSF_BcastAndOpBegin,sf,0,0,0);CHKERRQ(ierr);
+  ierr = (*sf->ops->BcastAndOpBegin)(sf,unit,rootdata,leafdata,op);CHKERRQ(ierr);
+  ierr = PetscLogEventEnd(PETSCSF_BcastAndOpBegin,sf,0,0,0);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
+/*@C
+   PetscSFBcastAndOpEnd - end a broadcast & reduce operation started with PetscSFBcastAndOpBegin()
+
+   Collective
+
+   Input Arguments:
++  sf - star forest
+.  unit - data type
+.  rootdata - buffer to broadcast
+-  op - operation to use for reduction
+
+   Output Arguments:
+.  leafdata - buffer to be reduced with values from each leaf's respective root
+
+   Level: intermediate
+
+.seealso: PetscSFSetGraph(), PetscSFReduceEnd()
+@*/
+PetscErrorCode PetscSFBcastAndOpEnd(PetscSF sf,MPI_Datatype unit,const void *rootdata,void *leafdata,MPI_Op op)
+{
+  PetscErrorCode ierr;
+
+  PetscFunctionBegin;
+  PetscValidHeaderSpecific(sf,PETSCSF_CLASSID,1);
+  ierr = PetscSFSetUp(sf);CHKERRQ(ierr);
+  ierr = PetscLogEventBegin(PETSCSF_BcastAndOpEnd,sf,0,0,0);CHKERRQ(ierr);
+  ierr = (*sf->ops->BcastAndOpEnd)(sf,unit,rootdata,leafdata,op);CHKERRQ(ierr);
+  ierr = PetscLogEventEnd(PETSCSF_BcastAndOpEnd,sf,0,0,0);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
+}
+
+/*@C
    PetscSFReduceBegin - begin reduction of leafdata into rootdata, to be completed with call to PetscSFReduceEnd()
 
    Collective
@@ -1157,6 +1268,9 @@ PetscErrorCode PetscSFReduceEnd(PetscSF sf,MPI_Datatype unit,const void *leafdat
 
    Level: advanced
 
+   Notes:
+   The returned array is owned by PetscSF and automatically freed by PetscSFDestroy(). Hence no need to call PetscFree() on it.
+
 .seealso: PetscSFGatherBegin()
 @*/
 PetscErrorCode PetscSFComputeDegreeBegin(PetscSF sf,const PetscInt **degree)
@@ -1193,6 +1307,9 @@ PetscErrorCode PetscSFComputeDegreeBegin(PetscSF sf,const PetscInt **degree)
 
    Level: developer
 
+   Notes:
+   The returned array is owned by PetscSF and automatically freed by PetscSFDestroy(). Hence no need to call PetscFree() on it.
+
 .seealso:
 @*/
 PetscErrorCode PetscSFComputeDegreeEnd(PetscSF sf,const PetscInt **degree)
@@ -1215,7 +1332,8 @@ PetscErrorCode PetscSFComputeDegreeEnd(PetscSF sf,const PetscInt **degree)
 
 
 /*@C
-   PetscSFComputeMultiRootOriginalNumbering - Returns original numbering of multi-roots (roots of multi-SF returned by PetscSFGetMultiSF()). Each multi-root is assigned index of its original root.
+   PetscSFComputeMultiRootOriginalNumbering - Returns original numbering of multi-roots (roots of multi-SF returned by PetscSFGetMultiSF()).
+   Each multi-root is assigned index of the corresponding original root.
 
    Collective
 
@@ -1224,13 +1342,17 @@ PetscErrorCode PetscSFComputeDegreeEnd(PetscSF sf,const PetscInt **degree)
 -  degree - degree of each root vertex, computed with PetscSFComputeDegreeBegin()/PetscSFComputeDegreeEnd()
 
    Output Arguments:
-.  mRootsOrigNumbering - original indices of multi-roots; length of the array is equal to the number of multi-roots (roots of multi-SF)
++  nMultiRoots - (optional) number of multi-roots (roots of multi-SF)
+-  multiRootsOrigNumbering - original indices of multi-roots; length of this array is nMultiRoots
 
    Level: developer
+   
+   Notes:
+   The returned array multiRootsOrigNumbering is newly allocated and should be destroyed with PetscFree() when no longer needed.
 
 .seealso: PetscSFComputeDegreeBegin(), PetscSFComputeDegreeEnd(), PetscSFGetMultiSF()
 @*/
-PetscErrorCode PetscSFComputeMultiRootOriginalNumbering(PetscSF sf, const PetscInt degree[], PetscInt *mRootsOrigNumbering[])
+PetscErrorCode PetscSFComputeMultiRootOriginalNumbering(PetscSF sf, const PetscInt degree[], PetscInt *nMultiRoots, PetscInt *multiRootsOrigNumbering[])
 {
   PetscSF             msf;
   PetscInt            i, j, k, nroots, nmroots;
@@ -1240,19 +1362,21 @@ PetscErrorCode PetscSFComputeMultiRootOriginalNumbering(PetscSF sf, const PetscI
   PetscValidHeaderSpecific(sf,PETSCSF_CLASSID,1);
   ierr = PetscSFGetGraph(sf, &nroots, NULL, NULL, NULL);CHKERRQ(ierr);
   if (nroots) PetscValidIntPointer(degree,2);
-  PetscValidPointer(mRootsOrigNumbering,3);
+  if (nMultiRoots) PetscValidIntPointer(nMultiRoots,3);
+  PetscValidPointer(multiRootsOrigNumbering,4);
   ierr = PetscSFGetMultiSF(sf,&msf);CHKERRQ(ierr);
   ierr = PetscSFGetGraph(msf, &nmroots, NULL, NULL, NULL);CHKERRQ(ierr);
-  ierr = PetscMalloc1(nmroots, mRootsOrigNumbering);CHKERRQ(ierr);
+  ierr = PetscMalloc1(nmroots, multiRootsOrigNumbering);CHKERRQ(ierr);
   for (i=0,j=0,k=0; i<nroots; i++) {
     if (!degree[i]) continue;
     for (j=0; j<degree[i]; j++,k++) {
-      (*mRootsOrigNumbering)[k] = i;
+      (*multiRootsOrigNumbering)[k] = i;
     }
   }
 #if defined(PETSC_USE_DEBUG)
   if (PetscUnlikely(k != nmroots)) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_PLIB,"sanity check fail");
 #endif
+  if (nMultiRoots) *nMultiRoots = nmroots;
   PetscFunctionReturn(0);
 }
 

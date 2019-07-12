@@ -50,14 +50,14 @@ int main(int argc,char **argv)
   Vec            x,v1,v2,v3,v4;
   PetscReal      norm,norm_tmp,norm_tmp1,tol=100.*PETSC_MACHINE_EPSILON;
   PetscRandom    rdm;
-  PetscBool      Test_MatMatMult=PETSC_TRUE,Test_MatPtAP=PETSC_TRUE,Test_3D=PETSC_FALSE,flg;
+  PetscBool      Test_MatMatMult=PETSC_TRUE,Test_MatPtAP=PETSC_TRUE,Test_3D=PETSC_TRUE,flg;
   const PetscInt *ia,*ja;
 
   ierr = PetscInitialize(&argc,&argv,NULL,help);if (ierr) return ierr;
   ierr = PetscOptionsGetReal(NULL,NULL,"-tol",&tol,NULL);CHKERRQ(ierr);
 
   user.ratio     = 2;
-  user.coarse.mx = 2; user.coarse.my = 2; user.coarse.mz = 0;
+  user.coarse.mx = 20; user.coarse.my = 20; user.coarse.mz = 20;
 
   ierr = PetscOptionsGetInt(NULL,NULL,"-Mx",&user.coarse.mx,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsGetInt(NULL,NULL,"-My",&user.coarse.my,NULL);CHKERRQ(ierr);
@@ -65,10 +65,6 @@ int main(int argc,char **argv)
   ierr = PetscOptionsGetInt(NULL,NULL,"-ratio",&user.ratio,NULL);CHKERRQ(ierr);
 
   if (user.coarse.mz) Test_3D = PETSC_TRUE;
-
-  user.fine.mx = user.ratio*(user.coarse.mx-1)+1;
-  user.fine.my = user.ratio*(user.coarse.my-1)+1;
-  user.fine.mz = user.ratio*(user.coarse.mz-1)+1;
 
   ierr = MPI_Comm_size(PETSC_COMM_WORLD,&size);CHKERRQ(ierr);
   ierr = MPI_Comm_rank(PETSC_COMM_WORLD,&rank);CHKERRQ(ierr);
@@ -78,12 +74,15 @@ int main(int argc,char **argv)
 
   /* Set up distributed array for fine grid */
   if (!Test_3D) {
-    ierr = DMDACreate2d(PETSC_COMM_WORLD, DM_BOUNDARY_NONE, DM_BOUNDARY_NONE,DMDA_STENCIL_STAR,user.fine.mx,user.fine.my,Npx,Npy,1,1,NULL,NULL,&user.fine.da);CHKERRQ(ierr);
+    ierr = DMDACreate2d(PETSC_COMM_WORLD, DM_BOUNDARY_NONE, DM_BOUNDARY_NONE,DMDA_STENCIL_STAR,user.coarse.mx,user.coarse.my,Npx,Npy,1,1,NULL,NULL,&user.coarse.da);CHKERRQ(ierr);
   } else {
-    ierr = DMDACreate3d(PETSC_COMM_WORLD,DM_BOUNDARY_NONE,DM_BOUNDARY_NONE,DM_BOUNDARY_NONE,DMDA_STENCIL_STAR,user.fine.mx,user.fine.my,user.fine.mz,Npx,Npy,Npz,1,1,NULL,NULL,NULL,&user.fine.da);CHKERRQ(ierr);
+    ierr = DMDACreate3d(PETSC_COMM_WORLD,DM_BOUNDARY_NONE,DM_BOUNDARY_NONE,DM_BOUNDARY_NONE,DMDA_STENCIL_STAR,user.coarse.mx,user.coarse.my,user.coarse.mz,Npx,Npy,Npz,1,1,NULL,NULL,NULL,&user.coarse.da);CHKERRQ(ierr);
   }
-  ierr = DMSetFromOptions(user.fine.da);CHKERRQ(ierr);
-  ierr = DMSetUp(user.fine.da);CHKERRQ(ierr);
+  ierr = DMSetFromOptions(user.coarse.da);CHKERRQ(ierr);
+  ierr = DMSetUp(user.coarse.da);CHKERRQ(ierr);
+
+  /* This makes sure the coarse DMDA has the same partition as the fine DMDA */
+  ierr = DMRefine(user.coarse.da,PetscObjectComm((PetscObject)user.coarse.da),&user.fine.da);CHKERRQ(ierr);
 
   /* Test DMCreateMatrix()                                         */
   /*------------------------------------------------------------*/
@@ -102,6 +101,8 @@ int main(int argc,char **argv)
 
   ierr = MatGetLocalSize(A,&m,&n);CHKERRQ(ierr);
   ierr = MatGetSize(A,&M,&N);CHKERRQ(ierr);
+  /* if (!rank) printf("A %d, %d\n",M,N); */
+
   /* set val=one to A */
   if (size == 1) {
     ierr = MatGetRowIJ(A,0,PETSC_FALSE,PETSC_FALSE,&nrows,&ia,&ja,&flg);CHKERRQ(ierr);
@@ -131,21 +132,11 @@ int main(int argc,char **argv)
   }
   /* ierr = MatView(A, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr); */
 
-  /* Set up distributed array for coarse grid */
-  if (!Test_3D) {
-    ierr = DMDACreate2d(PETSC_COMM_WORLD, DM_BOUNDARY_NONE, DM_BOUNDARY_NONE,DMDA_STENCIL_STAR,user.coarse.mx,user.coarse.my,Npx,Npy,1,1,NULL,NULL,&user.coarse.da);CHKERRQ(ierr);
-  } else {
-    ierr = DMDACreate3d(PETSC_COMM_WORLD,DM_BOUNDARY_NONE,DM_BOUNDARY_NONE,DM_BOUNDARY_NONE,DMDA_STENCIL_STAR,user.coarse.mx,user.coarse.my,user.coarse.mz,Npx,Npy,Npz,
-                        1,1,NULL,NULL,NULL,&user.coarse.da);CHKERRQ(ierr);
-  }
-  ierr = DMSetFromOptions(user.coarse.da);CHKERRQ(ierr);
-  ierr = DMSetUp(user.coarse.da);CHKERRQ(ierr);
-
-  /* Create interpolation between the levels */
+  /* Create interpolation between the fine and coarse grids */
   ierr = DMCreateInterpolation(user.coarse.da,user.fine.da,&P,NULL);CHKERRQ(ierr);
-
   ierr = MatGetLocalSize(P,&m,&n);CHKERRQ(ierr);
   ierr = MatGetSize(P,&M,&N);CHKERRQ(ierr);
+  /* if (!rank) printf("P %d, %d\n",M,N); */
 
   /* Create vectors v1 and v2 that are compatible with A */
   ierr = VecCreate(PETSC_COMM_WORLD,&v1);CHKERRQ(ierr);
@@ -165,10 +156,12 @@ int main(int argc,char **argv)
     /* Test MAT_REUSE_MATRIX - reuse symbolic C */
     alpha=1.0;
     for (i=0; i<2; i++) {
-      alpha -=0.1;
+      alpha -= 0.1;
       ierr   = MatScale(A_tmp,alpha);CHKERRQ(ierr);
       ierr   = MatMatMult(A_tmp,P,MAT_REUSE_MATRIX,fill,&C);CHKERRQ(ierr);
     }
+    /* Free intermediate data structures created for reuse of C=Pt*A*P */
+    ierr = MatFreeIntermediateDataStructures(C);CHKERRQ(ierr);
 
     /* Test MatDuplicate()        */
     /*----------------------------*/
@@ -213,10 +206,13 @@ int main(int argc,char **argv)
     /* Test MAT_REUSE_MATRIX - reuse symbolic C */
     alpha=1.0;
     for (i=0; i<1; i++) {
-      alpha -=0.1;
+      alpha -= 0.1;
       ierr   = MatScale(A,alpha);CHKERRQ(ierr);
       ierr   = MatPtAP(A,P,MAT_REUSE_MATRIX,fill,&C);CHKERRQ(ierr);
     }
+
+    /* Free intermediate data structures created for reuse of C=Pt*A*P */
+    ierr = MatFreeIntermediateDataStructures(C);CHKERRQ(ierr);
 
     /* Test MatDuplicate()        */
     /*----------------------------*/
@@ -272,11 +268,76 @@ int main(int argc,char **argv)
   return ierr;
 }
 
-
 /*TEST
 
    test:
+      args: -Mx 10 -My 5 -Mz 10
+      output_file: output/ex96_1.out
+
+   test:
+      suffix: nonscalable
       nsize: 3
-      args: -Mx 10 -My 5
+      args: -Mx 10 -My 5 -Mz 10
+      output_file: output/ex96_1.out
+
+   test:
+      suffix: scalable
+      nsize: 3
+      args: -Mx 10 -My 5 -Mz 10 -matmatmult_via scalable -matptap_via scalable
+      output_file: output/ex96_1.out
+
+   test:
+     suffix: seq_scalable
+     nsize: 3
+     args: -Mx 10 -My 5 -Mz 10 -matmatmult_via scalable -matptap_via scalable -inner_diag_matmatmult_via scalable -inner_offdiag_matmatmult_via scalable
+     output_file: output/ex96_1.out
+
+   test:
+     suffix: seq_sorted
+     nsize: 3
+     args: -Mx 10 -My 5 -Mz 10 -matmatmult_via scalable -matptap_via scalable -inner_diag_matmatmult_via sorted -inner_offdiag_matmatmult_via sorted
+     output_file: output/ex96_1.out
+
+   test:
+     suffix: seq_scalable_fast
+     nsize: 3
+     args: -Mx 10 -My 5 -Mz 10 -matmatmult_via scalable -matptap_via scalable -inner_diag_matmatmult_via scalable_fast -inner_offdiag_matmatmult_via scalable_fast
+     output_file: output/ex96_1.out
+
+   test:
+     suffix: seq_heap
+     nsize: 3
+     args: -Mx 10 -My 5 -Mz 10 -matmatmult_via scalable -matptap_via scalable -inner_diag_matmatmult_via heap -inner_offdiag_matmatmult_via heap
+     output_file: output/ex96_1.out
+
+   test:
+     suffix: seq_btheap
+     nsize: 3
+     args: -Mx 10 -My 5 -Mz 10 -matmatmult_via scalable -matptap_via scalable -inner_diag_matmatmult_via btheap -inner_offdiag_matmatmult_via btheap
+     output_file: output/ex96_1.out
+
+   test:
+     suffix: seq_llcondensed
+     nsize: 3
+     args: -Mx 10 -My 5 -Mz 10 -matmatmult_via scalable -matptap_via scalable -inner_diag_matmatmult_via llcondensed -inner_offdiag_matmatmult_via llcondensed
+     output_file: output/ex96_1.out
+
+   test:
+     suffix: seq_rowmerge
+     nsize: 3
+     args: -Mx 10 -My 5 -Mz 10 -matmatmult_via scalable -matptap_via scalable -inner_diag_matmatmult_via rowmerge -inner_offdiag_matmatmult_via rowmerge
+     output_file: output/ex96_1.out
+
+   test:
+     suffix: allatonce
+     nsize: 3
+     args: -Mx 10 -My 5 -Mz 10 -matmatmult_via scalable -matptap_via allatonce
+     output_file: output/ex96_1.out
+
+   test:
+     suffix: allatonce_merged
+     nsize: 3
+     args: -Mx 10 -My 5 -Mz 10 -matmatmult_via scalable -matptap_via allatonce_merged
+     output_file: output/ex96_1.out
 
 TEST*/

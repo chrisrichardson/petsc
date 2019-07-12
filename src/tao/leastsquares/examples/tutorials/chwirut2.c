@@ -8,12 +8,7 @@
 
 */
 
-/*T
-   requires: !single
-T*/
-
 #include <petsctao.h>
-
 
 /*
 Description:   These data are the result of a NIST study involving
@@ -72,7 +67,7 @@ int main(int argc,char **argv)
   AppCtx         user;               /* user-defined work context */
 
    /* Initialize TAO and PETSc */
-  ierr = PetscInitialize(&argc,&argv,(char *)0,help);CHKERRQ(ierr);
+  ierr = PetscInitialize(&argc,&argv,(char *)0,help);if (ierr) return ierr;
   MPI_Comm_size(MPI_COMM_WORLD,&user.size);
   MPI_Comm_rank(MPI_COMM_WORLD,&user.rank);
   ierr = InitializeData(&user);CHKERRQ(ierr);
@@ -453,12 +448,11 @@ PetscErrorCode StopWorkers(AppCtx *user)
   while(checkedin < user->size-1) {
     ierr = MPI_Recv(&f,1,MPIU_REAL,MPI_ANY_SOURCE,MPI_ANY_TAG,PETSC_COMM_WORLD,&status);CHKERRQ(ierr);
     checkedin++;
-    ierr = PetscMemzero(x,NPARAMETERS*sizeof(PetscReal));CHKERRQ(ierr);
+    ierr = PetscArrayzero(x,NPARAMETERS);CHKERRQ(ierr);
     ierr = MPI_Send(x,NPARAMETERS,MPIU_REAL,status.MPI_SOURCE,DIE_TAG,PETSC_COMM_WORLD);CHKERRQ(ierr);
   }
   PetscFunctionReturn(0);
 }
-
 
 /*TEST
 

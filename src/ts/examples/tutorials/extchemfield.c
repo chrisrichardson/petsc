@@ -26,7 +26,7 @@ static const char help[] = "Integrate chemistry using TChem.\n";
        cp $PETSC_DIR/$PETSC_ARCH/externalpackages/tchem/data/periodictable.dat .
 
     Run with
-     ./extchemfield  -ts_arkimex_fully_implicit -ts_max_snes_failures -1 -ts_adapt_monitor -ts_adapt_dt_max 1e-4 -ts_arkimex_type 4 -ts_final_time .005
+     ./extchemfield  -ts_arkimex_fully_implicit -ts_max_snes_failures -1 -ts_adapt_monitor -ts_adapt_dt_max 1e-4 -ts_arkimex_type 4 -ts_max_time .005
 
      Options for visualizing the solution:
         Watch certain variables in each cell evolve with time
@@ -326,7 +326,7 @@ static PetscErrorCode FormRHSFunction(TS ts,PetscReal t,Vec X,Vec F,void *ptr)
     ierr = DMDAGetCorners(dm,&xs,NULL,NULL,&xm,NULL,NULL);CHKERRQ(ierr);
 
     for (i=xs; i<xs+xm; i++) {
-      ierr = PetscMemcpy(user->tchemwork,x[i],(user->Nspec+1)*sizeof(x[xs][0]));CHKERRQ(ierr);
+      ierr = PetscArraycpy(user->tchemwork,x[i],user->Nspec+1);CHKERRQ(ierr);
       user->tchemwork[0] *= user->Tini; /* Dimensionalize */
       ierr = TC_getSrc(user->tchemwork,user->Nspec+1,f[i]);TCCHKERRQ(ierr);
       f[i][0] /= user->Tini;           /* Non-dimensionalize */
@@ -361,7 +361,7 @@ static PetscErrorCode FormRHSJacobian(TS ts,PetscReal t,Vec X,Mat Amat,Mat Pmat,
     ierr = DMDAGetCorners(dm,&xs,NULL,NULL,&xm,NULL,NULL);CHKERRQ(ierr);
 
     for (i=xs; i<xs+xm; i++) {
-      ierr = PetscMemcpy(user->tchemwork,x[i],(user->Nspec+1)*sizeof(x[xs][0]));CHKERRQ(ierr);
+      ierr = PetscArraycpy(user->tchemwork,x[i],user->Nspec+1);CHKERRQ(ierr);
       user->tchemwork[0] *= user->Tini;  /* Dimensionalize temperature (first row) because that is what Tchem wants */
       ierr = TC_getJacTYN(user->tchemwork,user->Nspec,user->Jdense,1);CHKERRQ(ierr);
 

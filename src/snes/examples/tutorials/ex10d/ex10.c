@@ -303,8 +303,7 @@ int main(int argc,char **argv)
     in setting up the data structures.
   */
   ierr      = PetscMalloc1(user.Nvglobal,&vertices);CHKERRQ(ierr);
-  ierr      = PetscMalloc1(user.Nvglobal,&verticesmask);CHKERRQ(ierr);
-  ierr      = PetscMemzero(verticesmask,user.Nvglobal*sizeof(PetscInt));CHKERRQ(ierr);
+  ierr      = PetscCalloc1(user.Nvglobal,&verticesmask);CHKERRQ(ierr);
   nvertices = 0;
 
   /*
@@ -374,7 +373,7 @@ int main(int argc,char **argv)
   */
   ierr = ISCreateStride(MPI_COMM_SELF,bs*nvertices,0,1,&islocal);CHKERRQ(ierr);
   ierr = ISCreateBlock(MPI_COMM_SELF,bs,nvertices,vertices,PETSC_COPY_VALUES,&isglobal);CHKERRQ(ierr);
-  ierr = VecScatterCreateWithData(x,isglobal,user.localX,islocal,&user.scatter);CHKERRQ(ierr);
+  ierr = VecScatterCreate(x,isglobal,user.localX,islocal,&user.scatter);CHKERRQ(ierr);
   ierr = ISDestroy(&isglobal);CHKERRQ(ierr);
   ierr = ISDestroy(&islocal);CHKERRQ(ierr);
 

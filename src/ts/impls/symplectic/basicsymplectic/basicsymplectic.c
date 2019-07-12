@@ -48,8 +48,6 @@ M*/
 
   Level: advanced
 
-.keywords: TS, TSBASICSYMPLECTIC, register, all
-
 .seealso:  TSBasicSymplecticRegisterDestroy()
 @*/
 PetscErrorCode TSBasicSymplecticRegisterAll(void)
@@ -86,7 +84,6 @@ PetscErrorCode TSBasicSymplecticRegisterAll(void)
 
    Level: advanced
 
-.keywords: TSBasicSymplectic, register, destroy
 .seealso: TSBasicSymplecticRegister(), TSBasicSymplecticRegisterAll()
 @*/
 PetscErrorCode TSBasicSymplecticRegisterDestroy(void)
@@ -108,12 +105,10 @@ PetscErrorCode TSBasicSymplecticRegisterDestroy(void)
 
 /*@C
   TSBasicSymplecticInitializePackage - This function initializes everything in the TSBasicSymplectic package. It is called
-  from PetscDLLibraryRegister() when using dynamic libraries, and on the first call to TSCreate_BasicSymplectic()
-  when using static libraries.
+  from TSInitializePackage().
 
   Level: developer
 
-.keywords: TS, TSBasicSymplectic, initialize, package
 .seealso: PetscInitialize()
 @*/
 PetscErrorCode TSBasicSymplecticInitializePackage(void)
@@ -134,7 +129,6 @@ PetscErrorCode TSBasicSymplecticInitializePackage(void)
 
   Level: developer
 
-.keywords: Petsc, destroy, package
 .seealso: PetscFinalize()
 @*/
 PetscErrorCode TSBasicSymplecticFinalizePackage(void)
@@ -164,15 +158,13 @@ PetscErrorCode TSBasicSymplecticFinalizePackage(void)
 
    Level: advanced
 
-.keywords: TS, register
-
 .seealso: TSBasicSymplectic
 @*/
 PetscErrorCode TSBasicSymplecticRegister(TSRosWType name,PetscInt order,PetscInt s,PetscReal c[],PetscReal d[])
 {
   BasicSymplecticSchemeLink link;
   BasicSymplecticScheme     scheme;
-  PetscErrorCode  ierr;
+  PetscErrorCode            ierr;
 
   PetscFunctionBegin;
   PetscValidCharPointer(name,1);
@@ -180,14 +172,14 @@ PetscErrorCode TSBasicSymplecticRegister(TSRosWType name,PetscInt order,PetscInt
   PetscValidPointer(d,4);
 
   ierr = TSBasicSymplecticInitializePackage();CHKERRQ(ierr);
-  ierr = PetscCalloc1(1,&link);CHKERRQ(ierr);
+  ierr = PetscNew(&link);CHKERRQ(ierr);
   scheme = &link->sch;
   ierr = PetscStrallocpy(name,&scheme->name);CHKERRQ(ierr);
   scheme->order = order;
   scheme->s = s;
   ierr = PetscMalloc2(s,&scheme->c,s,&scheme->d);CHKERRQ(ierr);
-  ierr = PetscMemcpy(scheme->c,c,s*sizeof(c[0]));CHKERRQ(ierr);
-  ierr = PetscMemcpy(scheme->d,d,s*sizeof(d[0]));CHKERRQ(ierr);
+  ierr = PetscArraycpy(scheme->c,c,s);CHKERRQ(ierr);
+  ierr = PetscArraycpy(scheme->d,d,s);CHKERRQ(ierr);
   link->next = BasicSymplecticSchemeList;
   BasicSymplecticSchemeList = link;
   PetscFunctionReturn(0);

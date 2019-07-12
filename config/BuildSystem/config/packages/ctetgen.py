@@ -4,8 +4,8 @@ import os
 class Configure(config.package.GNUPackage):
   def __init__(self, framework):
     config.package.GNUPackage.__init__(self, framework)
-    self.gitcommit         = '8ca66eb'
-    self.download          = ['git://https://bitbucket.org/petsc/ctetgen.git','http://ftp.mcs.anl.gov/pub/petsc/externalpackages/ctetgen-0.4.tar.gz']
+    self.gitcommit         = 'ctetgen-0.5'
+    self.download          = ['git://https://bitbucket.org/petsc/ctetgen.git','http://ftp.mcs.anl.gov/pub/petsc/externalpackages/ctetgen-0.5.tar.gz']
     self.functions         = []
     self.includes          = []
     self.hastests          = 1
@@ -25,7 +25,7 @@ class Configure(config.package.GNUPackage):
     if 'with-ctetgen' in self.framework.clArgDB:
       raise RuntimeError('Ctetgen does not support --with-ctetgen; only --download-ctetgen')
     if 'with-ctetgen-dir' in self.framework.clArgDB:
-      raise RuntimeError('Ctetgen does not support --with-ctetgen-dir; only --download-ctetgen')
+      self.ctetgenDir = self.framework.argDB['with-ctetgen-dir']
     if 'with-ctetgen-include' in self.framework.clArgDB:
       raise RuntimeError('Ctetgen does not support --with-ctetgen-include; only --download-ctetgen')
     if 'with-ctetgen-lib' in self.framework.clArgDB:
@@ -33,9 +33,11 @@ class Configure(config.package.GNUPackage):
     if 'with-ctetgen-shared' in self.framework.clArgDB:
       raise RuntimeError('Ctetgen does not support --with-ctetgen-shared')
 
-    self.checkDownload()
-    self.include = [os.path.join(self.installDir,'include')]
-    self.lib     = [os.path.join(self.installDir,'lib','libctetgen.a')]
+    if not hasattr(self,'ctetgenDir'):
+      self.checkDownload()
+      self.ctetgenDir = self.installDir
+    self.include = [os.path.join(self.ctetgenDir,'include')]
+    self.lib     = [os.path.join(self.ctetgenDir,'lib','libctetgen.a')]
     self.found   = 1
     self.dlib    = self.lib
     if not hasattr(self.framework, 'packages'):
@@ -43,14 +45,20 @@ class Configure(config.package.GNUPackage):
     self.framework.packages.append(self)
 
   def postProcess(self):
+    if not hasattr(self,'installDir'):
+      return
     try:
       self.logPrintBox('Compiling Ctetgen; this may take several minutes')
       # uses the regular PETSc library builder and then moves result 
-      output,err,ret  = config.package.GNUPackage.executeShellCommand('cd '+self.packageDir+' && '+self.make.make+' PETSC_DIR='+self.petscdir.dir+' clean lib',timeout=1000, log = self.log)
+      # turn off any compiler optimizations as they may break CTETGEN
+      self.setCompilers.pushLanguage('C')
+      cflags = self.checkNoOptFlag()+' '+self.getSharedFlag(self.setCompilers.getCompilerFlags())+' '+self.getPointerSizeFlag(self.setCompilers.getCompilerFlags())+' '+self.getWindowsNonOptFlags(self.setCompilers.getCompilerFlags())+' '+self.getDebugFlags(self.setCompilers.getCompilerFlags())
+      self.setCompilers.popLanguage()
+      output,err,ret  = config.package.GNUPackage.executeShellCommand(self.make.make+' PETSC_DIR='+self.petscdir.dir+' clean lib PCC_FLAGS="'+cflags+'"',timeout=1000, log = self.log, cwd=self.packageDir)
       self.log.write(output+err)
       self.logPrintBox('Installing Ctetgen; this may take several minutes')
       self.installDirProvider.printSudoPasswordMessage(1)
-      output,err,ret  = config.package.GNUPackage.executeShellCommand('cd '+self.packageDir+' && '+self.installDirProvider.installSudo+self.make.make+' PETSC_DIR='+self.petscdir.dir+' install-ctetgen',timeout=1000, log = self.log)
+      output,err,ret  = config.package.GNUPackage.executeShellCommand(self.installDirProvider.installSudo+self.make.make+' PETSC_DIR='+self.petscdir.dir+' prefix='+self.installDir+' install-ctetgen',timeout=1000, log = self.log, cwd=self.packageDir)
       self.log.write(output+err)
     except RuntimeError as e:
       raise RuntimeError('Error running make on Ctetgen: '+str(e))

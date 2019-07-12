@@ -5,11 +5,16 @@ configure_options = [
   '--with-fc=gfortran',
   '--with-cxx=clang++',
 
+  'COPTFLAGS=-g -O',
+  'FOPTFLAGS=-g -O',
+  'CXXOPTFLAGS=-g -O',
+
   '--with-clanguage=cxx',
   'CXXFLAGS=-Wall -Wwrite-strings -Wno-strict-aliasing -Wno-unknown-pragmas -fstack-protector -fvisibility=hidden -Wno-deprecated',
   '--with-scalar-type=complex',
   '--with-64-bit-indices=1',
 
+  '--download-hypre=1',
   '--download-mpich=1',
   '--download-cmake=1',
   '--download-make=1',
@@ -18,8 +23,9 @@ configure_options = [
   '--download-pastix=1',
   '--download-ptscotch=1',
   '--download-superlu_dist=1',
-  '--with-cxx-dialect=C++11',
   '--download-elemental=1',
+  '--download-p4est=1',
+  '--with-zlib=1',
   ]
 
 if __name__ == '__main__':

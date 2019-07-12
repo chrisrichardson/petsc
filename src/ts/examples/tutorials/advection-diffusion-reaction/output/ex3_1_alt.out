@@ -58,6 +58,7 @@ TSAdapt Object: 1 MPI processes
   clip fastest decrease 0.1
   maximum allowed timestep 1e+20
   minimum allowed timestep 1e-20
+  maximum solution absolute value to be ignored -1.
 SNES Object: 1 MPI processes
   type: newtonls
   maximum iterations=50, maximum function evaluations=10000
@@ -129,7 +130,7 @@ SNES Object: 1 MPI processes
             left preconditioning
             using PRECONDITIONED norm type for convergence test
           estimating eigenvalues using noisy right hand side
-        maximum iterations=2, nonzero initial guess
+        maximum iterations=3, nonzero initial guess
         tolerances:  relative=1e-05, absolute=1e-50, divergence=10000.
         left preconditioning
         using NONE norm type for convergence test
@@ -159,7 +160,7 @@ SNES Object: 1 MPI processes
             left preconditioning
             using PRECONDITIONED norm type for convergence test
           estimating eigenvalues using noisy right hand side
-        maximum iterations=2, nonzero initial guess
+        maximum iterations=3, nonzero initial guess
         tolerances:  relative=1e-05, absolute=1e-50, divergence=10000.
         left preconditioning
         using NONE norm type for convergence test

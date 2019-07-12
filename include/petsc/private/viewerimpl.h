@@ -45,5 +45,4 @@ PETSC_EXTERN PetscMPIInt Petsc_Viewer_HDF5_keyval;
 PETSC_EXTERN PetscMPIInt Petsc_Viewer_Socket_keyval;
 #endif
 
-
 #endif

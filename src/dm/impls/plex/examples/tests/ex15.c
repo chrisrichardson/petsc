@@ -27,13 +27,14 @@ int main(int argc, char **argv)
   ierr = PetscOptionsBegin(PETSC_COMM_WORLD,"","Test Options","none");CHKERRQ(ierr);
   ierr = PetscOptionsBool("-test_read","Test reading from the HDF5 file","",PETSC_FALSE,&test_read,NULL);CHKERRQ(ierr);
   ierr = PetscOptionsBool("-verbose","print the Vecs","",PETSC_FALSE,&verbose,NULL);CHKERRQ(ierr);
-  ierr = PetscOptionsInt("-dim","the dimension of the problem","",2,&dim,NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsRangeInt("-dim","the dimension of the problem","",2,&dim,NULL,1,3);CHKERRQ(ierr);
   ierr = PetscOptionsEnd();
 
   ierr = DMPlexCreateBoxMesh(comm, dim, PETSC_TRUE, NULL, NULL, NULL, NULL, PETSC_TRUE, &dm);CHKERRQ(ierr);
   ierr = DMGetDimension(dm, &dim);CHKERRQ(ierr);
   numDof[0] = dim;
-  ierr = DMPlexCreateSection(dm, dim, numFields, numComp, numDof, numBC, bcFields, bcPoints, NULL, NULL, &section);CHKERRQ(ierr);
+  ierr = DMSetNumFields(dm, numFields);CHKERRQ(ierr);
+  ierr = DMPlexCreateSection(dm, NULL, numComp, numDof, numBC, bcFields, bcPoints, NULL, NULL, &section);CHKERRQ(ierr);
   ierr = DMSetSection(dm, section);CHKERRQ(ierr);
   ierr = PetscSectionDestroy(&section);CHKERRQ(ierr);
   ierr = DMSetUseNatural(dm, PETSC_TRUE);CHKERRQ(ierr);

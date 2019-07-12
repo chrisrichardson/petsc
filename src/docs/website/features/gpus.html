@@ -50,18 +50,6 @@
         to work witht his feature.
       </p>
 
-      If you use the PETSc GPU code in your published work, please cite the following
-      paper:
-      <br>
-      <pre>
-        @article{minden2010preliminary,
-          title={Preliminary implementation of PETSc using GPUs},
-          author={Minden, V. and Smith, B.F. and Knepley, M.G.},
-          journal={Proceedings of the 2010 International Workshop of GPU Solutions to Multiscale Problems in Science and Engineering},
-          year={2010}
-        }
-      </pre>
-
       <span class="warning">
         WARNING: Using GPUs effectively is difficult! You must be dedicated and
         willing to get into the guts of GPU usage if you are serious about using
@@ -69,14 +57,14 @@
       </span>
 
       <ul>
-        <li><a href="http://www.mcs.anl.gov/petsc/documentation/installation.html#CUDA">Installing PETSc to use NVIDIA GPUs (CUDA)</a></li>
-        <li><a href="http://www.mcs.anl.gov/petsc/documentation/installation.html#OpenCL">Installing PETSc to use GPUs independent of the vendor (OpenCL)</a></li>
+        <li><a href="https://www.mcs.anl.gov/petsc/documentation/installation.html#CUDA">Installing PETSc to use NVIDIA GPUs (CUDA)</a></li>
+        <li><a href="https://www.mcs.anl.gov/petsc/documentation/installation.html#OpenCL">Installing PETSc to use GPUs independent of the vendor (OpenCL)</a></li>
         <li><a href="gpus.pdf">How the GPU solvers are implemented in PETSc</a></li>
-        <li><a href="http://www.mcs.anl.gov/petsc-master/src/snes/examples/tutorials/ex47cu.cu.html">Example that uses CUDA directly in the user function evaluation</a></li>
-        <li><a href="http://vimeo.com/18768859">Presentation on some aspects of GPU usage from PETSc</a></li>
+        <li><a href="https://www.mcs.anl.gov/petsc/petsc-current/src/snes/examples/tutorials/ex47cu.cu.html">Example that uses CUDA directly in the user function evaluation</a></li>
+        <li><a href="https://vimeo.com/18768859">Presentation on some aspects of GPU usage from PETSc</a></li>
 
         <li>
-          Quick summary of usage with CUDA (provided by the <a href="http://cusplibrary.github.io/" title="CUSP library">CUSP library</a>):
+          Quick summary of usage with CUDA:
           <ul>
             <li>
               The VecType <code>VECSEQCUDA</code>, <code>VECMPICUDA</code>, or

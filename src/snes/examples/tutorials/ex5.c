@@ -55,6 +55,7 @@ T*/
 #include <petscdmda.h>
 #include <petscsnes.h>
 #include <petscmatlab.h>
+#include <petsc/private/snesimpl.h> /* For SNES_Solve event */
 
 /*
    User-defined application context - contains data needed by the
@@ -223,6 +224,8 @@ int main(int argc,char **argv)
     ierr = VecGetSize(e, &N);CHKERRQ(ierr);
     ierr = PetscPrintf(PETSC_COMM_WORLD, "N: %D error L2 %g inf %g\n", N, (double) errorl2/PetscSqrtReal(N), (double) errorinf);CHKERRQ(ierr);
     ierr = VecDestroy(&e);CHKERRQ(ierr);
+    ierr = PetscLogEventSetDof(SNES_Solve, 0, N);CHKERRQ(ierr);
+    ierr = PetscLogEventSetError(SNES_Solve, 0, errorl2/PetscSqrtReal(N));CHKERRQ(ierr);
   }
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -862,7 +865,7 @@ PetscErrorCode NonlinearGS(SNES snes,Vec X, Vec B, void *ctx)
    test:
      suffix: 5_aspin
      nsize: 4
-     args: -snes_monitor_short -ksp_monitor_short -snes_converged_reason -da_refine 4 -da_overlap 3 -snes_type aspin
+     args: -snes_monitor_short -ksp_monitor_short -snes_converged_reason -da_refine 4 -da_overlap 3 -snes_type aspin -snes_view
 
    test:
      suffix: 5_broyden
@@ -941,5 +944,10 @@ PetscErrorCode NonlinearGS(SNES snes,Vec X, Vec B, void *ctx)
      suffix: 6
      nsize: 4
      args: -snes_converged_reason -ksp_converged_reason -da_grid_x 129 -da_grid_y 129 -pc_type mg -pc_mg_levels 8 -mg_levels_ksp_type chebyshev -mg_levels_ksp_chebyshev_esteig 0,0.5,0,1.1 -mg_levels_ksp_max_it 2
+
+   test:
+     requires: complex !single
+     suffix: complex
+     args: -snes_mf_operator -mat_mffd_complex -snes_monitor
 
 TEST*/

@@ -27,8 +27,8 @@ static PetscErrorCode ProcessOptions(MPI_Comm comm, AppCtx *options)
   options->interpolate  = PETSC_FALSE;
   options->filename[0]  = '\0';
   ierr = PetscOptionsBegin(comm, "", "Zero-sized DMPlexGetCellFields Test Options", "DMPLEX");CHKERRQ(ierr);
-  ierr = PetscOptionsInt("-test", "Test to run", FILENAME, options->test, &options->test, NULL);CHKERRQ(ierr);
-  ierr = PetscOptionsInt("-dim", "The topological mesh dimension", FILENAME, options->dim, &options->dim, NULL);CHKERRQ(ierr);
+  ierr = PetscOptionsBoundedInt("-test", "Test to run", FILENAME, options->test, &options->test, NULL,0);CHKERRQ(ierr);
+  ierr = PetscOptionsRangeInt("-dim", "The topological mesh dimension", FILENAME, options->dim, &options->dim, NULL,1,3);CHKERRQ(ierr);
   if (options->dim > 3) SETERRQ1(comm, PETSC_ERR_ARG_OUTOFRANGE, "dimension set to %d, must be <= 3", options->dim);
   ierr = PetscOptionsBool("-simplex", "Use simplices if true, otherwise hexes", FILENAME, options->simplex, &options->simplex, NULL);CHKERRQ(ierr);
   ierr = PetscOptionsBool("-interpolate", "Interpolate the mesh", FILENAME, options->interpolate, &options->interpolate, NULL);CHKERRQ(ierr);
@@ -139,15 +139,14 @@ static PetscErrorCode test3(DM dm, AppCtx *options)
 
 static PetscErrorCode test4(DM dm, AppCtx *options)
 {
-  PetscDS        ds;
   PetscFE        fe;
   PetscErrorCode ierr;
 
   PetscFunctionBegin;
-  ierr = DMGetDS(dm, &ds);CHKERRQ(ierr);
   ierr = PetscFECreateDefault(PetscObjectComm((PetscObject) dm), options->dim, 1, options->simplex, NULL, -1, &fe);CHKERRQ(ierr);
-  ierr = PetscDSSetDiscretization(ds, 0, (PetscObject)fe);CHKERRQ(ierr);
+  ierr = DMSetField(dm, 0, NULL, (PetscObject)fe);CHKERRQ(ierr);
   ierr = PetscFEDestroy(&fe);CHKERRQ(ierr);
+  ierr = DMCreateDS(dm);CHKERRQ(ierr);
   ierr = test2(dm, options);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
@@ -194,30 +193,28 @@ static PetscErrorCode test6(DM dm, AppCtx *options)
 
 static PetscErrorCode test7(DM dm, AppCtx *options)
 {
-  PetscDS        ds;
   PetscFE        fe;
   PetscErrorCode ierr;
 
   PetscFunctionBegin;
-  ierr = DMGetDS(dm, &ds);CHKERRQ(ierr);
   ierr = PetscFECreateDefault(PetscObjectComm((PetscObject) dm), options->dim, 1, options->simplex, NULL, -1, &fe);CHKERRQ(ierr);
-  ierr = PetscDSSetDiscretization(ds, 0, (PetscObject)fe);CHKERRQ(ierr);
+  ierr = DMSetField(dm, 0, NULL, (PetscObject)fe);CHKERRQ(ierr);
   ierr = PetscFEDestroy(&fe);CHKERRQ(ierr);
+  ierr = DMCreateDS(dm);CHKERRQ(ierr);
   ierr = test5(dm, options);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
 static PetscErrorCode test8(DM dm, AppCtx *options)
 {
-  PetscDS        ds;
   PetscFE        fe;
   PetscErrorCode ierr;
 
   PetscFunctionBegin;
-  ierr = DMGetDS(dm, &ds);CHKERRQ(ierr);
   ierr = PetscFECreateDefault(PetscObjectComm((PetscObject) dm), options->dim, 1, options->simplex, NULL, -1, &fe);CHKERRQ(ierr);
-  ierr = PetscDSSetDiscretization(ds, 0, (PetscObject)fe);CHKERRQ(ierr);
+  ierr = DMSetField(dm, 0, NULL, (PetscObject)fe);CHKERRQ(ierr);
   ierr = PetscFEDestroy(&fe);CHKERRQ(ierr);
+  ierr = DMCreateDS(dm);CHKERRQ(ierr);
   ierr = test6(dm, options);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }

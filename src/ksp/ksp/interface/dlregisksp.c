@@ -7,10 +7,10 @@ static const char *const PCSides_Shifted[]    = {"DEFAULT","LEFT","RIGHT","SYMME
 const char *const *const PCSides              = PCSides_Shifted + 1;
 const char *const        PCASMTypes[]         = {"NONE","RESTRICT","INTERPOLATE","BASIC","PCASMType","PC_ASM_",0};
 const char *const        PCGASMTypes[]        = {"NONE","RESTRICT","INTERPOLATE","BASIC","PCGASMType","PC_GASM_",0};
-const char *const        PCCompositeTypes[]   = {"ADDITIVE","MULTIPLICATIVE","SYMMETRIC_MULTIPLICATIVE","SPECIAL","SCHUR","PCCompositeType","PC_COMPOSITE",0};
+const char *const        PCCompositeTypes[]   = {"ADDITIVE","MULTIPLICATIVE","SYMMETRIC_MULTIPLICATIVE","SPECIAL","SCHUR","GKB","PCCompositeType","PC_COMPOSITE",0};
 const char *const        PCPARMSGlobalTypes[] = {"RAS","SCHUR","BJ","PCPARMSGlobalType","PC_PARMS_",0};
 const char *const        PCPARMSLocalTypes[]  = {"ILU0","ILUK","ILUT","ARMS","PCPARMSLocalType","PC_PARMS_",0};
-const char *const        PCPatchConstructTypes[] = {"star", "vanka", "user", "python", "PCPatchSetConstructType", "PC_PATCH_", 0};
+const char *const        PCPatchConstructTypes[] = {"star", "vanka", "pardecomp", "user", "python", "PCPatchSetConstructType", "PC_PATCH_", 0};
 
 const char *const        PCFailedReasons[]    = {"FACTOR_NOERROR","FACTOR_STRUCT_ZEROPIVOT","FACTOR_NUMERIC_ZEROPIVOT","FACTOR_OUTMEMORY","FACTOR_OTHER","SUBPC_ERROR",0};
 
@@ -21,7 +21,6 @@ static PetscBool PCPackageInitialized = PETSC_FALSE;
 
   Level: developer
 
-.keywords: Petsc, destroy, package, mathematica
 .seealso: PetscFinalize()
 @*/
 PetscErrorCode  PCFinalizePackage(void)
@@ -37,12 +36,11 @@ PetscErrorCode  PCFinalizePackage(void)
 
 /*@C
   PCInitializePackage - This function initializes everything in the PC package. It is called
-  from PetscDLLibraryRegister() when using dynamic libraries, and on the first call to PCCreate()
-  when using static libraries.
+  from PetscDLLibraryRegister_petscksp() when using dynamic libraries, and on the first call to PCCreate()
+  when using shared static libraries.
 
   Level: developer
 
-.keywords: PC, initialize, package
 .seealso: PetscInitialize()
 @*/
 PetscErrorCode  PCInitializePackage(void)
@@ -111,7 +109,7 @@ const char *const KSPCGTypes[]                  = {"SYMMETRIC","HERMITIAN","KSPC
 const char *const KSPGMRESCGSRefinementTypes[]  = {"REFINE_NEVER", "REFINE_IFNEEDED", "REFINE_ALWAYS","KSPGMRESRefinementType","KSP_GMRES_CGS_",0};
 const char *const KSPNormTypes_Shifted[]        = {"DEFAULT","NONE","PRECONDITIONED","UNPRECONDITIONED","NATURAL","KSPNormType","KSP_NORM_",0};
 const char *const*const KSPNormTypes = KSPNormTypes_Shifted + 1;
-const char *const KSPConvergedReasons_Shifted[] = {"DIVERGED_PCSETUP_FAILED","DIVERGED_INDEFINITE_MAT","DIVERGED_NANORINF","DIVERGED_INDEFINITE_PC",
+const char *const KSPConvergedReasons_Shifted[] = {"DIVERGED_PC_FAILED","DIVERGED_INDEFINITE_MAT","DIVERGED_NANORINF","DIVERGED_INDEFINITE_PC",
                                                    "DIVERGED_NONSYMMETRIC", "DIVERGED_BREAKDOWN_BICG","DIVERGED_BREAKDOWN",
                                                    "DIVERGED_DTOL","DIVERGED_ITS","DIVERGED_NULL","","CONVERGED_ITERATING",
                                                    "CONVERGED_RTOL_NORMAL","CONVERGED_RTOL","CONVERGED_ATOL","CONVERGED_ITS",
@@ -127,7 +125,6 @@ static PetscBool KSPPackageInitialized = PETSC_FALSE;
 
   Level: developer
 
-.keywords: Petsc, destroy, package, mathematica
 .seealso: PetscFinalize()
 @*/
 PetscErrorCode  KSPFinalizePackage(void)
@@ -144,12 +141,11 @@ PetscErrorCode  KSPFinalizePackage(void)
 
 /*@C
   KSPInitializePackage - This function initializes everything in the KSP package. It is called
-  from PetscDLLibraryRegister() when using dynamic libraries, and on the first call to KSPCreate()
-  when using static libraries.
+  from PetscDLLibraryRegister_petscksp() when using dynamic libraries, and on the first call to KSPCreate()
+  when using shared or static libraries.
 
   Level: developer
 
-.keywords: KSP, initialize, package
 .seealso: PetscInitialize()
 @*/
 PetscErrorCode  KSPInitializePackage(void)

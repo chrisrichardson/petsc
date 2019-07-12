@@ -32,14 +32,14 @@ class Configure(config.package.Package):
     cargs=' '.join(cargs)
 
     conffile = os.path.join(self.packageDir,self.package+'.petscconf')
-    fd = file(conffile, 'w')
+    fd = open(conffile, 'w')
     fd.write('args: '+args+'\n')
     fd.write('cargs: '+cargs+'\n')
     fd.close()
 
     if not self.installNeeded(conffile): return self.installDir
     self.log.write('zlibDir = '+self.packageDir+' installDir '+self.installDir+'\n')
-    self.logPrintBox('Building and installing zlib, this may take many minutes')
+    self.logPrintBox('Building and installing zlib, this may take several minutes')
     self.installDirProvider.printSudoPasswordMessage()
     try:
       output,err,ret  = config.base.Configure.executeShellCommand('cd '+self.packageDir+' && ' + args + ' ./configure '+cargs+' && '+self.make.make_jnp+' && '+self.installSudo+' ' +self.make.make+' install', timeout=600, log = self.log)

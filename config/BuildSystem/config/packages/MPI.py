@@ -2,7 +2,6 @@
 
 #!/usr/bin/env python
 from __future__ import generators
-import user
 import config.base
 import config.package
 import os
@@ -11,6 +10,8 @@ from stat import *
 class Configure(config.package.Package):
   def __init__(self, framework):
     config.package.Package.__init__(self, framework)
+    self.minversion         = '2'
+    self.versionname        = 'MPI_VERSION'
     self.functions          = ['MPI_Init', 'MPI_Comm_create']
     self.includes           = ['mpi.h']
     liblist_mpich         = [['fmpich2.lib','fmpich2g.lib','fmpich2s.lib','mpi.lib'],
@@ -49,6 +50,7 @@ class Configure(config.package.Package):
     self.alternativedownload = 'mpich'
     # support MPI-3 process shared memory
     self.support_mpi3_shm = 0
+    self.mpi_pkg_version  = ''
     return
 
   def setupHelp(self, help):
@@ -64,6 +66,10 @@ class Configure(config.package.Package):
     self.mpich   = framework.require('config.packages.MPICH', self)
     self.openmpi = framework.require('config.packages.OpenMPI', self)
     return
+
+  def __str__(self):
+    output  = config.package.Package.__str__(self)
+    return output+self.mpi_pkg_version
 
   def generateLibList(self, directory):
     if self.setCompilers.usedMPICompilers:
@@ -134,11 +140,27 @@ class Configure(config.package.Package):
     '''Sets flag indicating if MPI libraries are shared or not and
     determines if MPI libraries CANNOT be used by shared libraries'''
     self.executeTest(self.configureMPIEXEC)
+    if self.argDB['with-batch']:
+      if self.argDB['with-shared-libraries']:
+        if not 'known-mpi-shared-libraries' in self.argDB:
+          self.logPrintBox('***** WARNING: Cannot verify that MPI is a shared library - in\n\
+batch-mode! If MPI is a static library but linked into multiple shared\n\
+libraries that the application uses, sometimes compiles work -\n\
+but one might get run-time errors. If you know that the MPI library is\n\
+shared - run with --known-mpi-shared-libraries=1 option to remove this\n\
+warning message *****')
+        elif not self.argDB['known-mpi-shared-libraries']:
+          raise RuntimeError('Provided MPI library is flagged as static library! If its linked\n\
+into multipe shared libraries that an application uses, sometimes\n\
+compiles go through - but one might get run-time errors.  Either\n\
+reconfigure PETSc with --with-shared-libraries=0 or provide MPI with\n\
+shared libraries and run with --known-mpi-shared-libraries=1')
+      return
     try:
       self.shared = self.libraries.checkShared('#include <mpi.h>\n','MPI_Init','MPI_Initialized','MPI_Finalize',checkLink = self.checkPackageLink,libraries = self.lib, defaultArg = 'known-mpi-shared-libraries', executor = self.mpiexec)
     except RuntimeError as e:
       if self.argDB['with-shared-libraries']:
-        raise RuntimeError('Shared libraries cannot be built using MPI provided.\nEither rebuild with --with-shared-libraries=0 or rebuild MPI with shared library support')
+        raise RuntimeError('Shared libraries cannot be built using MPI provided.\nEither reconfigure with --with-shared-libraries=0 or rebuild MPI with shared library support')
       self.logPrint('MPI libraries cannot be used with shared libraries')
       self.shared = 0
     return
@@ -275,9 +297,9 @@ class Configure(config.package.Package):
     self.compilers.CPPFLAGS += ' '+self.headers.toString(self.include)
     self.framework.batchIncludeDirs.extend([self.headers.getIncludeArgument(inc) for inc in self.include])
     self.framework.addBatchLib(self.lib)
-    self.types.checkSizeof('MPI_Comm', 'mpi.h')
+    self.types.checkSizeof('MPI_Comm',(4,8),'mpi.h')
     if 'HAVE_MPI_FINT' in self.defines:
-      self.types.checkSizeof('MPI_Fint', 'mpi.h')
+      self.types.checkSizeof('MPI_Fint',(4,8),'mpi.h')
     self.compilers.CPPFLAGS = oldFlags
     return
 
@@ -291,7 +313,7 @@ class Configure(config.package.Package):
     if self.getDefaultLanguage() == 'C': mpitypes.extend([('MPI_C_DOUBLE_COMPLEX', 'c-double-complex')])
     for datatype, name in mpitypes:
       includes = '#ifdef PETSC_HAVE_STDLIB_H\n  #include <stdlib.h>\n#endif\n#include <mpi.h>\n'
-      body     = 'MPI_Aint size;\nint ierr;\nMPI_Init(0,0);\nierr = MPI_Type_extent('+datatype+', &size);\nif(ierr || (size == 0)) exit(1);\nMPI_Finalize();\n'
+      body     = 'int size;\nint ierr;\nMPI_Init(0,0);\nierr = MPI_Type_size('+datatype+', &size);\nif(ierr || (size == 0)) exit(1);\nMPI_Finalize();\n'
       if self.checkCompile(includes, body):
         if 'known-mpi-'+name in self.argDB:
           if int(self.argDB['known-mpi-'+name]):
@@ -302,24 +324,12 @@ class Configure(config.package.Package):
             self.addDefine('HAVE_'+datatype, 1)
           self.popLanguage()
         else:
-          if self.needBatchMPI:
-            self.framework.addBatchSetup('if (MPI_Init(&argc, &argv));')
-            self.framework.addBatchCleanup('if (MPI_Finalize());')
-            self.needBatchMPI = 0
-          self.framework.addBatchInclude(['#include <stdlib.h>', '#define MPICH_IGNORE_CXX_SEEK', '#define MPICH_SKIP_MPICXX 1', '#define OMPI_SKIP_MPICXX 1', '#include <mpi.h>'])
-          self.framework.addBatchBody('''
-{
-  MPI_Aint size=0;
-  int ierr=0;
-  if (MPI_LONG_DOUBLE != MPI_DATATYPE_NULL) {
-    ierr = MPI_Type_extent(%s, &size);
-  }
-  if(!ierr && (size != 0)) {
-    fprintf(output, "  \'--known-mpi-%s=1\',\\n");
-  } else {
-    fprintf(output, "  \'--known-mpi-%s=0\',\\n");
-  }
-}''' % (datatype, name, name))
+         self.logPrintBox('***** WARNING: Cannot determine if '+datatype+' works on your system\n\
+in batch-mode! Assuming it does work. Run with --known-mpi-'+name+'=0\n\
+if you know it does not work (very unlikely). Run with --known-mpi-'+name+'=1\n\
+to remove this warning message.\n\
+warning message *****')
+         self.addDefine('HAVE_'+datatype, 1)
     self.compilers.CPPFLAGS = oldFlags
     self.compilers.LIBS = oldLibs
     return
@@ -347,6 +357,7 @@ class Configure(config.package.Package):
     self.commc2f = 1
     self.usingMPIUni = 1
     self.version = 'PETSc MPIUNI uniprocessor MPI replacement'
+    self.executeTest(self.PetscArchMPICheck)
     return
 
   def configureMissingPrototypes(self):
@@ -473,6 +484,7 @@ class Configure(config.package.Package):
         try:
           mpich_numversion = re.compile('\nint mpich_ver ='+HASHLINESPACE+'([0-9]+)'+HASHLINESPACE+';').search(buf).group(1)
           self.addDefine('HAVE_'+MPICHPKG+'_NUMVERSION',mpich_numversion)
+          self.mpi_pkg_version  = '  '+MPICHPKG+'_NUMVERSION: '+mpich_numversion+'\n'
           if mpichpkg == 'mpich': self.mpich_numversion = mpich_numversion
         except:
           self.logPrint('Unable to parse '+MPICHPKG+' version from header. Probably a buggy preprocessor')
@@ -490,6 +502,7 @@ class Configure(config.package.Package):
         self.addDefine('HAVE_OMPI_MINOR_VERSION',ompi_minor_version)
         self.addDefine('HAVE_OMPI_RELEASE_VERSION',ompi_release_version)
         self.ompi_major_version = ompi_major_version
+        self.mpi_pkg_version = '  OMPI_VERSION: '+ompi_major_version+'.'+ompi_minor_version+'.'+ompi_release_version+'\n'
       except:
         self.logPrint('Unable to parse OpenMPI version from header. Probably a buggy preprocessor')
     self.compilers.CPPFLAGS = oldFlags
@@ -521,6 +534,39 @@ class Configure(config.package.Package):
       pass
     return
 
+  def log_print_mpi_h_line(self,buf):
+    for line in buf.splitlines():
+      if 'mpi.h' in line:
+        self.log.write('mpi_h_line:\n'+line+'\n')
+        return
+    self.log.write('mpi.h not found in buf')
+    return
+
+  def PetscArchMPICheck(self):
+    import os
+    '''Makes sure incompatable mpi.h is not in the PETSC_ARCH/include directory'''
+    build_mpi_h_dir = os.path.join(self.petscdir.dir,self.arch,'include')
+    build_mpi_h = os.path.join(build_mpi_h_dir,'mpi.h')
+    if os.path.isfile(build_mpi_h):
+      self.log.write('mpi.h found in build dir! Checking if its a bad copy.\n')
+      if self.usingMPIUni:
+        raise RuntimeError('There is a copy of mpi.h in '+build_mpi_h_dir+' that will conflict with --with-mpi=0 build. do:\nrm -rf '+self.arch+' and run ./configure again\n')
+      oldFlags = self.compilers.CPPFLAGS
+      mpi_h_test = '#include <mpi.h>'
+      # check self.include
+      self.compilers.CPPFLAGS = oldFlags+' '+self.headers.toString(self.include)
+      buf1 = self.outputPreprocess(mpi_h_test)
+      self.log_print_mpi_h_line(buf1)
+      # check build_mpi_h_dir and self.include
+      self.compilers.CPPFLAGS = oldFlags+' '+self.headers.getIncludeArgument(build_mpi_h_dir)+' '+self.headers.toString(self.include)
+      buf2 = self.outputPreprocess(mpi_h_test)
+      self.log_print_mpi_h_line(buf2)
+      if buf1 != buf2:
+        raise RuntimeError('There is a copy of mpi.h in '+build_mpi_h_dir+' that is not compatible with your MPI, do:\nrm -rf '+self.arch+' and run ./configure again\n')
+      self.compilers.CPPFLAGS = oldFlags
+    return
+
+
   def configureLibrary(self):
     '''Calls the regular package configureLibrary and then does an additional test needed by MPI'''
     if 'with-'+self.package+'-shared' in self.argDB:
@@ -538,6 +584,7 @@ class Configure(config.package.Package):
     self.executeTest(self.FortranMPICheck)
     self.executeTest(self.configureIO)
     self.executeTest(self.findMPIInc)
+    self.executeTest(self.PetscArchMPICheck)
     if self.libraries.check(self.dlib, "MPI_Alltoallw") and self.libraries.check(self.dlib, "MPI_Type_create_indexed_block"):
       self.addDefine('HAVE_MPI_ALLTOALLW',1)
     funcs = '''MPI_Comm_spawn MPI_Type_get_envelope MPI_Type_get_extent MPI_Type_dup MPI_Init_thread

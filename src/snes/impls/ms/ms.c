@@ -35,8 +35,6 @@ typedef struct {
 
   Level: advanced
 
-.keywords: SNES, SNESMS, register, all
-
 .seealso:  SNESMSRegisterDestroy()
 @*/
 PetscErrorCode SNESMSRegisterAll(void)
@@ -110,7 +108,6 @@ PetscErrorCode SNESMSRegisterAll(void)
 
    Level: advanced
 
-.keywords: TSRosW, register, destroy
 .seealso: TSRosWRegister(), TSRosWRegisterAll(), TSRosWRegister()
 @*/
 PetscErrorCode SNESMSRegisterDestroy(void)
@@ -133,12 +130,10 @@ PetscErrorCode SNESMSRegisterDestroy(void)
 
 /*@C
   SNESMSInitializePackage - This function initializes everything in the SNESMS package. It is called
-  from PetscDLLibraryRegister() when using dynamic libraries, and on the first call to SNESCreate_MS()
-  when using static libraries.
+  from SNESInitializePackage().
 
   Level: developer
 
-.keywords: SNES, SNESMS, initialize, package
 .seealso: PetscInitialize()
 @*/
 PetscErrorCode SNESMSInitializePackage(void)
@@ -160,7 +155,6 @@ PetscErrorCode SNESMSInitializePackage(void)
 
   Level: developer
 
-.keywords: Petsc, destroy, package
 .seealso: PetscFinalize()
 @*/
 PetscErrorCode SNESMSFinalizePackage(void)
@@ -192,8 +186,6 @@ PetscErrorCode SNESMSFinalizePackage(void)
 
    Level: advanced
 
-.keywords: SNES, register
-
 .seealso: SNESMS
 @*/
 PetscErrorCode SNESMSRegister(SNESMSType name,PetscInt nstages,PetscInt nregisters,PetscReal stability,const PetscReal gamma[],const PetscReal delta[],const PetscReal betasub[])
@@ -219,9 +211,9 @@ PetscErrorCode SNESMSRegister(SNESMSType name,PetscInt nstages,PetscInt nregiste
   t->stability  = stability;
 
   ierr = PetscMalloc3(nstages*nregisters,&t->gamma,nstages,&t->delta,nstages,&t->betasub);CHKERRQ(ierr);
-  ierr = PetscMemcpy(t->gamma,gamma,nstages*nregisters*sizeof(PetscReal));CHKERRQ(ierr);
-  ierr = PetscMemcpy(t->delta,delta,nstages*sizeof(PetscReal));CHKERRQ(ierr);
-  ierr = PetscMemcpy(t->betasub,betasub,nstages*sizeof(PetscReal));CHKERRQ(ierr);
+  ierr = PetscArraycpy(t->gamma,gamma,nstages*nregisters);CHKERRQ(ierr);
+  ierr = PetscArraycpy(t->delta,delta,nstages);CHKERRQ(ierr);
+  ierr = PetscArraycpy(t->betasub,betasub,nstages);CHKERRQ(ierr);
 
   link->next        = SNESMSTableauList;
   SNESMSTableauList = link;
@@ -293,6 +285,7 @@ static PetscErrorCode SNESSolve_MS(SNES snes)
 
   if (snes->jacobian) {         /* This method does not require a Jacobian, but it is usually preconditioned by PBJacobi */
     ierr = SNESComputeJacobian(snes,snes->vec_sol,snes->jacobian,snes->jacobian_pre);CHKERRQ(ierr);
+    SNESCheckJacobianDomainerror(snes);
   }
   if (ms->norms) {
     ierr = VecNorm(F,NORM_2,&fnorm);CHKERRQ(ierr); /* fnorm <- ||F||  */

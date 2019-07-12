@@ -175,7 +175,7 @@ PetscErrorCode  PetscOptionsGetViewerOff(PetscBool *flg)
 /*@C
    PetscOptionsGetViewer - Gets a viewer appropriate for the type indicated by the user
 
-   Collective on MPI_Comm
+   Collective
 
    Input Parameters:
 +  comm - the communicator to own the viewer
@@ -216,7 +216,7 @@ $       saws[:communicatorname]                    publishes object to the Scien
           PetscOptionsFList(), PetscOptionsEList(), PetscOptionsPushGetViewerOff(), PetscOptionsPopGetViewerOff(),
           PetscOptionsGetViewerOff()
 @*/
-PetscErrorCode  PetscOptionsGetViewer(MPI_Comm comm,const char pre[],const char name[],PetscViewer *viewer,PetscViewerFormat *format,PetscBool  *set)
+PetscErrorCode  PetscOptionsGetViewer(MPI_Comm comm,PetscOptions options,const char pre[],const char name[],PetscViewer *viewer,PetscViewerFormat *format,PetscBool  *set)
 {
   const char                     *value;
   PetscErrorCode                 ierr;
@@ -253,7 +253,7 @@ PetscErrorCode  PetscOptionsGetViewer(MPI_Comm comm,const char pre[],const char 
   }
 
   if (format) *format = PETSC_VIEWER_DEFAULT;
-  ierr = PetscOptionsFindPair(NULL,pre,name,&value,&flag);CHKERRQ(ierr);
+  ierr = PetscOptionsFindPair(options,pre,name,&value,&flag);CHKERRQ(ierr);
   if (flag) {
     if (set) *set = PETSC_TRUE;
     if (!value) {
@@ -369,7 +369,7 @@ PetscErrorCode  PetscOptionsGetViewer(MPI_Comm comm,const char pre[],const char 
 /*@
    PetscViewerCreate - Creates a viewing context
 
-   Collective on MPI_Comm
+   Collective
 
    Input Parameter:
 .  comm - MPI communicator
@@ -378,10 +378,6 @@ PetscErrorCode  PetscOptionsGetViewer(MPI_Comm comm,const char pre[],const char 
 .  inviewer - location to put the PetscViewer context
 
    Level: advanced
-
-   Concepts: graphics^creating PetscViewer
-   Concepts: file input/output^creating PetscViewer
-   Concepts: sockets^creating PetscViewer
 
 .seealso: PetscViewerDestroy(), PetscViewerSetType(), PetscViewerType
 
@@ -410,7 +406,7 @@ PetscErrorCode  PetscViewerCreate(MPI_Comm comm,PetscViewer *inviewer)
 -  type        - for example, PETSCVIEWERASCII
 
    Options Database Command:
-.  -draw_type  <type> - Sets the type; use -help for a list
+.  -viewer_type  <type> - Sets the type; use -help for a list
     of available methods (for instance, ascii)
 
    Level: advanced
@@ -472,8 +468,6 @@ $     PetscViewerSetType(viewer,"my_viewer_type")
    or at runtime via the option
 $     -viewer_type my_viewer_type
 
-  Concepts: registering^Viewers
-
 .seealso: PetscViewerRegisterAll(), PetscViewerRegisterDestroy()
  @*/
 PetscErrorCode  PetscViewerRegister(const char *sname,PetscErrorCode (*function)(PetscViewer))
@@ -499,8 +493,6 @@ PetscErrorCode  PetscViewerRegister(const char *sname,PetscErrorCode (*function)
 
    Notes:
     Must be called after PetscViewerCreate() before the PetscViewer is used.
-
-  Concepts: PetscViewer^setting options
 
 .seealso: PetscViewerCreate(), PetscViewerSetType(), PetscViewerType
 

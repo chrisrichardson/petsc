@@ -1,8 +1,8 @@
 /*
   Interface to the PETSc graphics
 */
-#if !defined(__PETSCDRAW_H)
-#define __PETSCDRAW_H
+#if !defined(PETSCDRAW_H)
+#define PETSCDRAW_H
 #include <petscsys.h>
 #include <petscdrawtypes.h>
 
@@ -99,7 +99,6 @@ PETSC_STATIC_INLINE int PetscDrawRealToColor(PetscReal value,PetscReal min,Petsc
 }
 
 PETSC_EXTERN PetscErrorCode PetscDrawOpenX(MPI_Comm,const char[],const char[],int,int,int,int,PetscDraw*);
-PETSC_EXTERN PetscErrorCode PetscDrawOpenGLUT(MPI_Comm,const char[],const char[],int,int,int,int,PetscDraw*);
 
 #define PETSC_DRAW_FULL_SIZE    -3
 #define PETSC_DRAW_HALF_SIZE    -4
@@ -215,8 +214,6 @@ PETSC_EXTERN PetscErrorCode PetscDrawZoom(PetscDraw,PetscErrorCode (*)(PetscDraw
      PetscDrawViewPorts - Subwindows in a PetscDraw object
 
    Level: intermediate
-
-  Concepts: graphics
 
 .seealso:  PetscDrawViewPortsCreate(), PetscDrawViewPortsSet()
 S*/
