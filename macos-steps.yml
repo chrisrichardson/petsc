@@ -11,7 +11,8 @@ steps:
   displayName: Install Homebrew dependencies
 
 - bash: |
-    git checkout v3.10.2
+    # Petsc 3.11.3
+    git checkout 8fb8dbaab76e3eb36061f8be821d8703451f6653
     ./configure \
     --COPTFLAGS="-O2 -g" \
     --CXXOPTFLAGS="-O2 -g" \
