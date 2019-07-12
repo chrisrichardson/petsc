@@ -25,7 +25,6 @@ steps:
     --download-hdf5 \
     --download-hypre \
     --download-metis \
-    --download-mumps \
     --download-ptscotch \
     --download-scalapack \
     --download-spai \
