@@ -4,7 +4,7 @@ jobs:
   displayName: MacOS PETSc build
 
   pool:
-    vmImage: xcode9-macos10.14
+    vmImage: macOS-10.14
 
   steps:
   - template: ./macos-steps.yml
